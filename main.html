@@ -169,8 +169,9 @@
         function startMusic() {
             if (musicTimer) return;
 
-            // A simple festive-ish melody
+            // Expanded festive melody with variations
             const melody = [
+                // Part A (Original Theme)
                 { freq: 392.00, duration: 0.25 }, // G4
                 { freq: 329.63, duration: 0.25 }, // E4
                 { freq: 261.63, duration: 0.5 },  // C4
@@ -180,7 +181,40 @@
                 { freq: 440.00, duration: 0.25 }, // A4
                 { freq: 392.00, duration: 0.25 }, // G4
                 { freq: 329.63, duration: 0.5 },  // E4
-                { freq: 261.63, duration: 0.75 }  // C4
+                { freq: 261.63, duration: 0.75 }, // C4
+
+                // Part A' (Variation)
+                { freq: 392.00, duration: 0.25 }, // G4
+                { freq: 329.63, duration: 0.25 }, // E4
+                { freq: 261.63, duration: 0.5 },  // C4
+                { freq: 329.63, duration: 0.25 }, // E4
+                { freq: 392.00, duration: 0.25 }, // G4
+                { freq: 523.25, duration: 0.5 },  // C5
+                { freq: 587.33, duration: 0.25 }, // D5
+                { freq: 523.25, duration: 0.25 }, // C5
+                { freq: 493.88, duration: 0.25 }, // B4
+                { freq: 523.25, duration: 0.75 }, // C5
+
+                // Part B (Bridge)
+                { freq: 293.66, duration: 0.25 }, // D4
+                { freq: 329.63, duration: 0.25 }, // E4
+                { freq: 349.23, duration: 0.5 },  // F4
+                { freq: 293.66, duration: 0.25 }, // D4
+                { freq: 329.63, duration: 0.25 }, // E4
+                { freq: 349.23, duration: 0.5 },  // F4
+                { freq: 392.00, duration: 0.5 },  // G4
+                { freq: 329.63, duration: 0.5 },  // E4
+
+                // Part A'' (Return)
+                { freq: 392.00, duration: 0.25 }, // G4
+                { freq: 329.63, duration: 0.25 }, // E4
+                { freq: 261.63, duration: 0.5 },  // C4
+                { freq: 329.63, duration: 0.25 }, // E4
+                { freq: 392.00, duration: 0.25 }, // G4
+                { freq: 523.25, duration: 0.5 },  // C5
+                { freq: 440.00, duration: 0.25 }, // A4
+                { freq: 493.88, duration: 0.25 }, // B4
+                { freq: 523.25, duration: 1.0 }   // C5
             ];
             let noteIndex = 0;
 
@@ -253,7 +287,7 @@
 
         // Snow Particles
         const snowParticles = [];
-        const numSnowflakes = 50;
+        const numSnowflakes = 200;
 
         class Snowflake {
             constructor() {
@@ -288,6 +322,7 @@
         }
 
         function initSnow() {
+            snowParticles.length = 0;
             for (let i = 0; i < numSnowflakes; i++) {
                 snowParticles.push(new Snowflake());
             }
