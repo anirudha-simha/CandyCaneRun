@@ -282,6 +282,19 @@
             rotation: 0
         };
 
+        const reindeer = {
+            x: 0,
+            y: 0,
+            baseY: 0,
+            width: 40,
+            height: 40,
+            sprite: "🦌",
+            bobOffset: 0,
+            bobSpeed: 0.003,
+            legOffset: 0,
+            legSpeed: 0.02
+        };
+
         let obstacles = [];
         let groundHeight = 50;
 
@@ -337,6 +350,9 @@
             if (scale > 1.5) scale = 1.5;
 
             groundHeight = canvas.height * 0.15;
+            reindeer.x = canvas.width - 100;
+            reindeer.baseY = canvas.height * 0.3;
+            reindeer.y = reindeer.baseY;
             initSnow(); // Re-initialize snow on resize
         }
 
@@ -408,6 +424,11 @@
             cat.y = canvas.height - groundHeight - cat.height * scale;
             cat.dy = 0;
             cat.rotation = 0;
+            reindeer.x = canvas.width - 100;
+            reindeer.baseY = canvas.height * 0.3;
+            reindeer.y = reindeer.baseY;
+            reindeer.bobOffset = 0;
+            reindeer.legOffset = 0;
             scoreEl.textContent = `Score: ${score}`;
         }
 
@@ -521,6 +542,12 @@
             }
             // Update snow particles
             snowParticles.forEach(snow => snow.update());
+
+            // Update reindeer bobbing animation
+            reindeer.bobOffset += reindeer.bobSpeed * deltaTime;
+            reindeer.y = reindeer.baseY + Math.sin(reindeer.bobOffset) * (15 * scale);
+            // Update leg movement animation (faster oscillation for leg movement effect)
+            reindeer.legOffset += reindeer.legSpeed * deltaTime;
         }
 
         function draw() {
@@ -536,6 +563,19 @@
             // Draw Snowy Ground Top Border (slightly darker)
             ctx.fillStyle = '#C5E4ED';
             ctx.fillRect(0, canvas.height - groundHeight, canvas.width, 10);
+
+            // Draw reindeer (stays on right side, bobs up and down)
+            ctx.save();
+            ctx.translate(reindeer.x, reindeer.y);
+            // Flip the reindeer to face right
+            ctx.scale(-1, 1);
+            // Add slight rotation for leg movement effect
+            ctx.rotate(Math.sin(reindeer.legOffset) * 0.03);
+            ctx.font = `${40 * scale}px serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(reindeer.sprite, 0, 0);
+            ctx.restore();
 
             obstacles.forEach(obs => obs.draw());
 
