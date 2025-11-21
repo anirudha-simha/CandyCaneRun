@@ -14,10 +14,8 @@
             padding: 0;
             overflow: hidden;
             background-color: #1A2E44;
-            /* Match game background */
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             touch-action: none;
-            /* Critical for mobile games */
             user-select: none;
         }
 
@@ -29,7 +27,6 @@
             align-items: center;
         }
 
-        /* UI Overlay */
         #ui-layer {
             position: absolute;
             top: 0;
@@ -106,12 +103,9 @@
     <div id="game-container"></div>
 
     <script>
-        // ============================================
-        // CONFIGURATION
-        // ============================================
         const COLORS = {
-            BACKGROUND: 0x1A2E44, // Dark Blue Night Sky
-            GROUND: 0xE0F2F7,     // Snow
+            BACKGROUND: 0x1A2E44,
+            GROUND: 0xE0F2F7,
             GROUND_BORDER: 0xC5E4ED
         };
 
@@ -119,9 +113,6 @@
             GROUND_HEIGHT_RATIO: 0.15
         };
 
-        // ============================================
-        // PHASER SCENE
-        // ============================================
         class GameScene extends Phaser.Scene {
             constructor() {
                 super({ key: 'GameScene' });
@@ -130,48 +121,68 @@
             create() {
                 this.isGameRunning = false;
                 this.score = 0;
+                this.audioStarted = false;
 
-                // 1. Setup World Bounds
                 this.physics.world.setBounds(0, 0, this.scale.width, this.scale.height);
 
-                // 2. Draw Background (Static)
-                this.add.rectangle(
+                // Background (behind everything)
+                const background = this.add.rectangle(
                     this.scale.width / 2,
                     this.scale.height / 2,
                     this.scale.width,
                     this.scale.height,
                     COLORS.BACKGROUND
                 );
+                background.setDepth(-3);
 
-                // 3. Generate Candy Cane Texture (Procedural)
+                // Moon (in front of background)
+                this.moon = this.add.circle(this.scale.width - 100, 80, 40, 0xFFF8DC, 0.9);
+                this.moon.setDepth(-2);
+
+                // Randomized Mountains Background
+                this.hillsGraphics = this.add.graphics();
+                this.hillsGraphics.setDepth(-1);
+                this.drawHills();
+
+                // Enhanced Snow Particles (5x more!)
+                const snowGraphics = this.make.graphics({ x: 0, y: 0, add: false });
+                snowGraphics.fillStyle(0xffffff);
+                snowGraphics.fillCircle(2, 2, 2);
+                snowGraphics.generateTexture('snowflake', 4, 4);
+
+                this.snowEmitter = this.add.particles(0, 0, 'snowflake', {
+                    x: { min: 0, max: this.scale.width },
+                    y: -10,
+                    lifespan: 8000,
+                    speedY: { min: 30, max: 120 },
+                    speedX: { min: -30, max: 30 },
+                    scale: { start: 0.3, end: 2 },
+                    quantity: 5,
+                    frequency: 50
+                });
+
                 if (!this.textures.exists('candyCane')) {
                     const graphics = this.make.graphics({ x: 0, y: 0, add: false });
-                    graphics.fillStyle(0xffffff); // White
+                    graphics.fillStyle(0xffffff);
                     graphics.fillRect(0, 0, 20, 60);
-                    graphics.fillStyle(0xff0000); // Red stripes
+                    graphics.fillStyle(0xff0000);
                     graphics.fillRect(0, 10, 20, 10);
                     graphics.fillRect(0, 30, 20, 10);
                     graphics.fillRect(0, 50, 20, 10);
                     graphics.generateTexture('candyCane', 20, 60);
                 }
 
-                // 4. Draw Ground
                 this.groundHeight = this.scale.height * GAME_CONFIG.GROUND_HEIGHT_RATIO;
 
                 this.ground = this.add.graphics();
                 this.ground.fillStyle(COLORS.GROUND, 1);
                 this.ground.fillRect(0, this.scale.height - this.groundHeight, this.scale.width, this.groundHeight);
-
-                // Ground Border
                 this.ground.fillStyle(COLORS.GROUND_BORDER, 1);
                 this.ground.fillRect(0, this.scale.height - this.groundHeight, this.scale.width, 10);
 
-                // 5. The Player (Cat)
-                this.cat = this.add.text(50, 0, "🐈‍⬛", {
-                    fontSize: '40px'
-                });
+                this.cat = this.add.text(50, 0, "🐈‍⬛", { fontSize: '40px' });
                 this.cat.setOrigin(0.5, 0.5);
-                this.cat.setFlipX(true); // Face Right
+                this.cat.setFlipX(true);
 
                 this.physics.add.existing(this.cat);
                 this.cat.body.setCollideWorldBounds(true);
@@ -179,10 +190,7 @@
                 this.cat.body.setSize(30, 30);
                 this.cat.body.setOffset(5, 5);
 
-                // 6. The Reindeer (Goal)
-                this.reindeer = this.add.text(this.scale.width - 100, this.scale.height - this.groundHeight - 200, "🦌", {
-                    fontSize: '60px'
-                });
+                this.reindeer = this.add.text(this.scale.width - 100, this.scale.height - this.groundHeight - 200, "🦌", { fontSize: '60px' });
                 this.reindeer.setOrigin(0.5, 0.5);
                 this.reindeer.setFlipX(true);
 
@@ -195,19 +203,16 @@
                     ease: 'Sine.easeInOut'
                 });
 
-                // 7. Obstacles Group
                 this.obstacles = this.physics.add.group();
 
-                // Spawn Timer
                 this.spawnEvent = this.time.addEvent({
                     delay: 2000,
                     callback: this.spawnObstacle,
                     callbackScope: this,
                     loop: true,
-                    paused: true // Start paused
+                    paused: true
                 });
 
-                // 8. Physics Floor
                 this.physicsFloor = this.add.rectangle(
                     this.scale.width / 2,
                     this.scale.height - this.groundHeight,
@@ -223,14 +228,11 @@
                     this.cat.rotation = 0;
                 });
 
-                // 9. Collision Logic
                 this.physics.add.overlap(this.cat, this.obstacles, this.hitObstacle, null, this);
 
-                // 10. Input
                 this.input.on('pointerdown', this.handleInput, this);
                 this.input.keyboard.on('keydown-SPACE', this.handleInput, this);
 
-                // 11. UI Integration
                 this.scoreText = this.add.text(20, 20, 'Score: 0', {
                     fontSize: '32px',
                     fill: '#fff',
@@ -239,14 +241,113 @@
                 this.scoreText.setDepth(10);
                 this.scoreText.setVisible(false);
 
-                // HTML UI Event Listeners
                 document.getElementById('start-btn').onclick = () => this.startGame();
                 document.getElementById('restart-btn').onclick = () => this.startGame();
 
                 this.scale.on('resize', this.resize, this);
             }
 
+            drawHills() {
+                this.hillsGraphics.clear();
+                const width = this.scale.width;
+                const height = this.scale.height;
+                const groundY = height - this.groundHeight;
+
+                // Single color for distant mountain effect
+                const mountainColor = 0x2C4A6B;
+                const mountainAlpha = 0.5;
+
+                // Generate random seed for this instance (stays same until resize)
+                if (!this.hillSeed) {
+                    this.hillSeed = Math.random() * 1000;
+                }
+
+                this.hillsGraphics.fillStyle(mountainColor, mountainAlpha);
+                this.hillsGraphics.beginPath();
+
+                // Start at bottom left
+                this.hillsGraphics.moveTo(0, height);
+                this.hillsGraphics.lineTo(0, groundY);
+
+                // Draw randomized mountain peaks using multiple sine waves
+                for (let x = 0; x <= width; x += 10) {
+                    // Combine multiple sine waves with different frequencies for natural variation
+                    const wave1 = Math.sin((x + this.hillSeed) * 0.002) * 150;
+                    const wave2 = Math.sin((x + this.hillSeed) * 0.003) * 100;
+                    const wave3 = Math.sin((x + this.hillSeed) * 0.001) * 200;
+
+                    // Combine waves for varied, tall mountain peaks
+                    const y = groundY - (wave1 + wave2 + wave3);
+                    this.hillsGraphics.lineTo(x, y);
+                }
+
+                // Complete the shape back to bottom right
+                this.hillsGraphics.lineTo(width, groundY);
+                this.hillsGraphics.lineTo(width, height);
+                this.hillsGraphics.lineTo(0, height);
+
+                this.hillsGraphics.closePath();
+                this.hillsGraphics.fillPath();
+            }
+
+            async initAudio() {
+                if (this.audioStarted) return;
+
+                await Tone.start();
+                this.audioStarted = true;
+
+                // Improved synth with richer sound
+                this.synth = new Tone.PolySynth(Tone.Synth, {
+                    oscillator: { type: "sine" },
+                    envelope: { attack: 0.005, decay: 0.2, sustain: 0.4, release: 1.5 }
+                }).toDestination();
+                this.synth.volume.value = -8;
+
+                // Add reverb for atmosphere
+                const reverb = new Tone.Reverb({ decay: 2, wet: 0.3 }).toDestination();
+                this.synth.connect(reverb);
+
+                this.jumpSynth = new Tone.Synth({
+                    oscillator: { type: "square" },
+                    envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 }
+                }).toDestination();
+                this.jumpSynth.volume.value = -10;
+
+                this.hitSynth = new Tone.MembraneSynth().toDestination();
+                this.hitSynth.volume.value = -5;
+
+                // Extended Jingle Bells melody
+                const melody = [
+                    // Jingle bells, jingle bells
+                    ["0:0", "E4"], ["0:1", "E4"], ["0:2", "E4"],
+                    ["1:0", "E4"], ["1:1", "E4"], ["1:2", "E4"],
+                    // Jingle all the way
+                    ["2:0", "E4"], ["2:1", "G4"], ["2:2", "C4"], ["2:2.5", "D4"],
+                    ["3:0", "E4"],
+                    // Oh what fun it is to ride
+                    ["4:0", "F4"], ["4:1", "F4"], ["4:2", "F4"], ["4:3", "F4"],
+                    ["5:0", "F4"], ["5:1", "E4"], ["5:2", "E4"], ["5:3", "E4"],
+                    // In a one horse open sleigh
+                    ["6:0", "E4"], ["6:1", "D4"], ["6:2", "D4"], ["6:3", "E4"],
+                    ["7:0", "D4"], ["7:2", "G4"]
+                ];
+
+                this.musicPart = new Tone.Part((time, note) => {
+                    this.synth.triggerAttackRelease(note, "8n", time);
+                }, melody);
+
+                this.musicPart.loop = true;
+                this.musicPart.loopEnd = "8m";
+
+                Tone.Transport.bpm.value = 120;
+            }
+
             startGame() {
+                this.initAudio().then(() => {
+                    Tone.Transport.start();
+                    this.musicPart.start(0);
+                });
+
                 this.isGameRunning = true;
                 this.score = 0;
                 this.scoreText.setText('Score: 0');
@@ -255,7 +356,6 @@
                 document.getElementById('start-screen').style.display = 'none';
                 document.getElementById('game-over-screen').style.display = 'none';
 
-                // Reset entities
                 this.obstacles.clear(true, true);
                 this.cat.y = 0;
                 this.cat.body.setVelocity(0, 0);
@@ -278,7 +378,7 @@
 
                 const obstacle = this.obstacles.create(x, y, 'candyCane');
                 obstacle.setOrigin(0.5, 0.5);
-                obstacle.setVelocityX(-300 - (this.score * 10)); // Get faster over time
+                obstacle.setVelocityX(-300 - (this.score * 10));
                 obstacle.body.allowGravity = false;
                 obstacle.body.setImmovable(true);
             }
@@ -290,7 +390,12 @@
                 this.physics.pause();
                 this.spawnEvent.paused = true;
 
-                // Game Over UI
+                if (this.audioStarted) {
+                    this.hitSynth.triggerAttackRelease("C2", "8n");
+                    Tone.Transport.stop();
+                    this.musicPart.stop();
+                }
+
                 document.getElementById('final-score').textContent = this.score;
                 document.getElementById('game-over-screen').style.display = 'block';
             }
@@ -299,6 +404,11 @@
                 if (this.cat.isGrounded) {
                     this.cat.body.setVelocityY(-600);
                     this.cat.isGrounded = false;
+
+                    if (this.audioStarted) {
+                        this.jumpSynth.triggerAttackRelease("C5", "16n");
+                    }
+
                     this.tweens.add({
                         targets: this.cat,
                         angle: 360,
@@ -331,6 +441,18 @@
 
                 this.reindeer.x = width - 100;
                 this.reindeer.y = height - this.groundHeight - 200;
+
+                // Update moon position
+                this.moon.x = width - 100;
+
+                // Regenerate mountains with new random seed
+                this.hillSeed = Math.random() * 1000;
+                this.drawHills();
+
+                this.snowEmitter.setEmitZone({
+                    type: 'random',
+                    source: new Phaser.Geom.Rectangle(0, 0, width, 1)
+                });
             }
 
             update() {
@@ -346,9 +468,6 @@
             }
         }
 
-        // ============================================
-        // GAME INITIALIZATION
-        // ============================================
         const config = {
             type: Phaser.AUTO,
             parent: 'game-container',
@@ -356,14 +475,14 @@
             height: window.innerHeight,
             backgroundColor: '#1A2E44',
             scale: {
-                mode: Phaser.Scale.RESIZE, // Responsive
+                mode: Phaser.Scale.RESIZE,
                 autoCenter: Phaser.Scale.CENTER_BOTH
             },
             physics: {
                 default: 'arcade',
                 arcade: {
                     gravity: { y: 0 },
-                    debug: false // Set to true to see hitboxes
+                    debug: false
                 }
             },
             scene: [GameScene]
@@ -371,7 +490,6 @@
 
         const game = new Phaser.Game(config);
 
-        // Focus handling
         window.addEventListener('focus', () => {
             if (game) game.step();
         });
