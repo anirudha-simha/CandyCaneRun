@@ -3,27 +3,33 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Reindeer Chase</title>
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Reindeer Chase (Phaser Edition)</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
     <style>
         body {
             margin: 0;
             padding: 0;
             overflow: hidden;
             background-color: #1A2E44;
-            /* Dark Blue for Night Sky */
+            /* Match game background */
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            touch-action: manipulation;
-            /* Prevents double-tap zoom */
+            touch-action: none;
+            /* Critical for mobile games */
             user-select: none;
         }
 
-        #gameCanvas {
-            display: block;
+        #game-container {
             width: 100%;
             height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
 
+        /* UI Overlay */
         #ui-layer {
             position: absolute;
             top: 0;
@@ -37,7 +43,7 @@
             align-items: center;
             text-align: center;
             color: white;
-            /* UI text color for night theme */
+            z-index: 100;
         }
 
         .message-box {
@@ -46,7 +52,6 @@
             border-radius: 15px;
             box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
             pointer-events: auto;
-            transition: opacity 0.3s;
             max-width: 80%;
         }
 
@@ -60,11 +65,6 @@
             color: #666;
             font-size: 1.2rem;
             margin-bottom: 20px;
-        }
-
-        #start-screen p {
-            /* Adjust color for start screen text */
-            color: #666;
         }
 
         button {
@@ -84,644 +84,297 @@
             transform: translateY(4px);
             box-shadow: 0 0 0 #d45050;
         }
-
-        #score-display {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            font-size: 24px;
-            font-weight: bold;
-            color: white;
-            text-shadow: 2px 2px 0 #000;
-            pointer-events: none;
-        }
-
-        .hidden {
-            display: none !important;
-        }
     </style>
 </head>
 
 <body>
 
-    <canvas id="gameCanvas"></canvas>
-
-    <div id="score-display">Score: 0</div>
-
     <div id="ui-layer">
         <div id="start-screen" class="message-box">
             <h1>Reindeer Chase</h1>
-            <p>Help Noodles dodge the candy canes and catch up to the reindeer!</p>
-            <p><small>Spacebar, Click, or Tap to Jump</small></p>
-            <button onclick="startGame()">Play Now</button>
+            <p>Help Noodles catch the reindeer!</p>
+            <p><small>Tap or Space to Jump</small></p>
+            <button id="start-btn">Play Now</button>
         </div>
-
-        <div id="game-over-screen" class="message-box hidden">
+        <div id="game-over-screen" class="message-box" style="display: none;">
             <h1>Ouch!</h1>
-            <p>Final Score: <span id="final-score">0</span></p>
-            <button onclick="resetGame()">Try Again?</button>
+            <p>Score: <span id="final-score">0</span></p>
+            <button id="restart-btn">Try Again</button>
         </div>
     </div>
 
+    <div id="game-container"></div>
+
     <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const scoreEl = document.getElementById('score-display');
-        const startScreen = document.getElementById('start-screen');
-        const gameOverScreen = document.getElementById('game-over-screen');
-        const finalScoreEl = document.getElementById('final-score');
-
         // ============================================
-        // CONSTANTS
+        // CONFIGURATION
         // ============================================
-        const GAME_CONFIG = {
-            INITIAL_SPEED: 3,
-            SPEED_INCREMENT: 0.0001,
-            BASE_SCALE_WIDTH: 800,
-            BASE_SCALE_HEIGHT: 600,
-            MIN_SCALE: 0.6,
-            MAX_SCALE: 1.5,
-            GROUND_HEIGHT_RATIO: 0.15,
-            REINDEER_X_OFFSET: 100,
-            REINDEER_Y_RATIO: 0.3,
-            CAT_SIZE: 40,
-            REINDEER_SIZE: 80,
-            CAT_X: 50
-        };
-
-        const ANIMATION_CONFIG = {
-            REINDEER_BOB_SPEED: 0.003,
-            REINDEER_BOB_AMPLITUDE: 15,
-            REINDEER_LEG_SPEED: 0.02,
-            REINDEER_LEG_ROTATION: 0.03,
-            CAT_ROTATION_MAX: Math.PI / 4
-        };
-
-        const OBSTACLE_CONFIG = {
-            WIDTH: 20,
-            MIN_HEIGHT: 40,
-            MAX_HEIGHT: 80,
-            MIN_GAP: 350,
-            MAX_GAP: 700
-        };
-
-        const PHYSICS_CONFIG = {
-            CAT_JUMP_FORCE: -14.5,
-            CAT_GRAVITY: 0.5,
-            CAT_HITBOX_PADDING: 10,
-            CAT_HITBOX_WIDTH_OFFSET: 20,
-            CAT_HITBOX_HEIGHT_OFFSET: 15
-        };
-
-        const SNOW_CONFIG = {
-            COUNT: 200,
-            MIN_RADIUS: 1,
-            MAX_RADIUS: 3,
-            MIN_SPEED_Y: 1,
-            MAX_SPEED_Y: 3,
-            SPEED_X_RANGE: 0.5,
-            MIN_OPACITY: 0.5,
-            MAX_OPACITY: 1.0
-        };
-
         const COLORS = {
-            BACKGROUND: '#1A2E44',
-            SNOW_GROUND: '#E0F2F7',
-            SNOW_BORDER: '#C5E4ED',
-            OBSTACLE_WHITE: '#FFF',
-            OBSTACLE_RED: '#FF0000'
+            BACKGROUND: 0x1A2E44, // Dark Blue Night Sky
+            GROUND: 0xE0F2F7,     // Snow
+            GROUND_BORDER: 0xC5E4ED
+        };
+
+        const GAME_CONFIG = {
+            GROUND_HEIGHT_RATIO: 0.15
         };
 
         // ============================================
-        // AUDIO
+        // PHASER SCENE
         // ============================================
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        const audioCtx = new AudioContext();
-        let musicTimer = null;
-
-        function playSound(type) {
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-            const osc = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-
-            osc.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-
-            if (type === 'jump') {
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(350, audioCtx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.1);
-                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-                osc.start();
-                osc.stop(audioCtx.currentTime + 0.1);
-            } else if (type === 'hit') {
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(150, audioCtx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.2);
-                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
-                osc.start();
-                osc.stop(audioCtx.currentTime + 0.2);
-            }
-        }
-
-        // More interesting background music
-        function startMusic() {
-            if (musicTimer) return;
-
-            // Expanded festive melody with variations
-            const melody = [
-                // Part A (Original Theme)
-                { freq: 392.00, duration: 0.25 }, // G4
-                { freq: 329.63, duration: 0.25 }, // E4
-                { freq: 261.63, duration: 0.5 },  // C4
-                { freq: 329.63, duration: 0.25 }, // E4
-                { freq: 392.00, duration: 0.25 }, // G4
-                { freq: 523.25, duration: 0.75 }, // C5
-                { freq: 440.00, duration: 0.25 }, // A4
-                { freq: 392.00, duration: 0.25 }, // G4
-                { freq: 329.63, duration: 0.5 },  // E4
-                { freq: 261.63, duration: 0.75 }, // C4
-
-                // Part A' (Variation)
-                { freq: 392.00, duration: 0.25 }, // G4
-                { freq: 329.63, duration: 0.25 }, // E4
-                { freq: 261.63, duration: 0.5 },  // C4
-                { freq: 329.63, duration: 0.25 }, // E4
-                { freq: 392.00, duration: 0.25 }, // G4
-                { freq: 523.25, duration: 0.5 },  // C5
-                { freq: 587.33, duration: 0.25 }, // D5
-                { freq: 523.25, duration: 0.25 }, // C5
-                { freq: 493.88, duration: 0.25 }, // B4
-                { freq: 523.25, duration: 0.75 }, // C5
-
-                // Part B (Bridge)
-                { freq: 293.66, duration: 0.25 }, // D4
-                { freq: 329.63, duration: 0.25 }, // E4
-                { freq: 349.23, duration: 0.5 },  // F4
-                { freq: 293.66, duration: 0.25 }, // D4
-                { freq: 329.63, duration: 0.25 }, // E4
-                { freq: 349.23, duration: 0.5 },  // F4
-                { freq: 392.00, duration: 0.5 },  // G4
-                { freq: 329.63, duration: 0.5 },  // E4
-
-                // Part A'' (Return)
-                { freq: 392.00, duration: 0.25 }, // G4
-                { freq: 329.63, duration: 0.25 }, // E4
-                { freq: 261.63, duration: 0.5 },  // C4
-                { freq: 329.63, duration: 0.25 }, // E4
-                { freq: 392.00, duration: 0.25 }, // G4
-                { freq: 523.25, duration: 0.5 },  // C5
-                { freq: 440.00, duration: 0.25 }, // A4
-                { freq: 493.88, duration: 0.25 }, // B4
-                { freq: 523.25, duration: 1.0 }   // C5
-            ];
-            let noteIndex = 0;
-
-            const playNextNote = () => {
-                if (!gameRunning) {
-                    stopMusic();
-                    return;
-                }
-
-                const note = melody[noteIndex % melody.length];
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-
-                // Changed to 'triangle' for a clearer, 8-bit festive sound
-                osc.type = 'triangle';
-                osc.frequency.setValueAtTime(note.freq, audioCtx.currentTime);
-
-                // Increased volume from 0.02 to 0.1 so it's actually audible
-                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + note.duration * 0.9);
-
-                osc.start(audioCtx.currentTime);
-                osc.stop(audioCtx.currentTime + note.duration);
-
-                noteIndex++;
-
-                // Schedule the next note based on the current note's duration
-                musicTimer = setTimeout(playNextNote, note.duration * 1000);
-            };
-
-            playNextNote();
-        }
-
-        function stopMusic() {
-            if (musicTimer) {
-                clearTimeout(musicTimer);
-                musicTimer = null;
-            }
-        }
-
-        // ============================================
-        // GAME STATE
-        // ============================================
-        let gameRunning = false;
-        let score = 0;
-        let gameSpeed = GAME_CONFIG.INITIAL_SPEED;
-        let lastTime = 0;
-        let nextSpawnGap = 0;
-        let scale = 1;
-
-        // ============================================
-        // GAME OBJECTS
-        // ============================================
-        const cat = {
-            x: GAME_CONFIG.CAT_X,
-            y: 0,
-            width: GAME_CONFIG.CAT_SIZE,
-            height: GAME_CONFIG.CAT_SIZE,
-            dy: 0,
-            jumpForce: PHYSICS_CONFIG.CAT_JUMP_FORCE,
-            gravity: PHYSICS_CONFIG.CAT_GRAVITY,
-            grounded: false,
-            sprite: "🐈‍⬛",
-            rotation: 0
-        };
-
-        const reindeer = {
-            x: 0,
-            y: 0,
-            baseY: 0,
-            width: GAME_CONFIG.CAT_SIZE,
-            height: GAME_CONFIG.CAT_SIZE,
-            sprite: "🦌",
-            bobOffset: 0,
-            bobSpeed: ANIMATION_CONFIG.REINDEER_BOB_SPEED,
-            legOffset: 0,
-            legSpeed: ANIMATION_CONFIG.REINDEER_LEG_SPEED
-        };
-
-        let obstacles = [];
-        let groundHeight = 50;
-
-        // ============================================
-        // PARTICLE SYSTEMS
-        // ============================================
-        const snowParticles = [];
-
-        class Snowflake {
+        class GameScene extends Phaser.Scene {
             constructor() {
-                const width = canvas.width || window.innerWidth;
-                const height = canvas.height || window.innerHeight;
-                this.x = Math.random() * width;
-                this.y = Math.random() * height;
-                this.radius = SNOW_CONFIG.MIN_RADIUS + Math.random() * (SNOW_CONFIG.MAX_RADIUS - SNOW_CONFIG.MIN_RADIUS);
-                this.speedX = (Math.random() - 0.5) * SNOW_CONFIG.SPEED_X_RANGE;
-                this.speedY = SNOW_CONFIG.MIN_SPEED_Y + Math.random() * (SNOW_CONFIG.MAX_SPEED_Y - SNOW_CONFIG.MIN_SPEED_Y);
-                this.opacity = SNOW_CONFIG.MIN_OPACITY + Math.random() * (SNOW_CONFIG.MAX_OPACITY - SNOW_CONFIG.MIN_OPACITY);
+                super({ key: 'GameScene' });
             }
 
-            draw() {
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
-                ctx.fill();
-            }
+            create() {
+                this.isGameRunning = false;
+                this.score = 0;
 
-            update() {
-                this.x += this.speedX;
-                this.y += this.speedY;
+                // 1. Setup World Bounds
+                this.physics.world.setBounds(0, 0, this.scale.width, this.scale.height);
 
-                if (this.y > canvas.height) {
-                    this.y = -this.radius; // Reset to top
-                    this.x = Math.random() * canvas.width; // New random X
-                }
-                if (this.x < -this.radius || this.x > canvas.width + this.radius) {
-                    this.x = Math.random() * canvas.width;
-                    this.y = -this.radius;
-                }
-            }
-        }
-
-        function initSnow() {
-            snowParticles.length = 0;
-            for (let i = 0; i < SNOW_CONFIG.COUNT; i++) {
-                snowParticles.push(new Snowflake());
-            }
-        }
-
-        function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-
-            scale = Math.min(
-                canvas.width / GAME_CONFIG.BASE_SCALE_WIDTH,
-                canvas.height / GAME_CONFIG.BASE_SCALE_HEIGHT
-            );
-            scale = Math.max(GAME_CONFIG.MIN_SCALE, Math.min(GAME_CONFIG.MAX_SCALE, scale));
-
-            groundHeight = canvas.height * GAME_CONFIG.GROUND_HEIGHT_RATIO;
-            reindeer.x = canvas.width - GAME_CONFIG.REINDEER_X_OFFSET;
-            reindeer.baseY = canvas.height * GAME_CONFIG.REINDEER_Y_RATIO;
-            reindeer.y = reindeer.baseY;
-            initSnow();
-        }
-
-        window.addEventListener('resize', resize);
-        resize(); // Initial resize and snow init
-
-        class Obstacle {
-            constructor() {
-                this.width = OBSTACLE_CONFIG.WIDTH * scale;
-                this.height = (OBSTACLE_CONFIG.MIN_HEIGHT + Math.random() * (OBSTACLE_CONFIG.MAX_HEIGHT - OBSTACLE_CONFIG.MIN_HEIGHT)) * scale;
-                this.x = canvas.width;
-                this.y = canvas.height - groundHeight - this.height;
-            }
-
-            draw() {
-                ctx.save();
-
-                // Main stick
-                ctx.fillStyle = COLORS.OBSTACLE_WHITE;
-                ctx.fillRect(this.x, this.y, this.width, this.height);
-
-                // Red Stripes
-                ctx.fillStyle = COLORS.OBSTACLE_RED;
-                const stripeHeight = 10 * scale;
-
-                ctx.beginPath();
-                for (let i = 0; i < this.height; i += stripeHeight * 2) {
-                    ctx.fillRect(this.x, this.y + i, this.width, stripeHeight);
-                }
-
-                // Top hook detail
-                ctx.beginPath();
-                ctx.arc(this.x + this.width / 2, this.y, this.width / 2, Math.PI, 0);
-                ctx.fillStyle = COLORS.OBSTACLE_WHITE;
-                ctx.fill();
-
-                ctx.restore();
-            }
-
-            update() {
-                this.x -= gameSpeed * scale;
-            }
-        }
-
-        // ============================================
-        // GAME CONTROL
-        // ============================================
-        function startGame() {
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-
-            gameRunning = true;
-            startMusic();
-
-            startScreen.classList.add('hidden');
-            gameOverScreen.classList.add('hidden');
-            resetGameVars();
-
-            lastTime = performance.now();
-            requestAnimationFrame(gameLoop);
-        }
-
-        function resetGameVars() {
-            score = 0;
-            gameSpeed = GAME_CONFIG.INITIAL_SPEED;
-            obstacles = [];
-            nextSpawnGap = 0;
-            
-            const catSize = GAME_CONFIG.CAT_SIZE * scale;
-            cat.y = canvas.height - groundHeight - catSize;
-            cat.dy = 0;
-            cat.rotation = 0;
-            
-            reindeer.x = canvas.width - GAME_CONFIG.REINDEER_X_OFFSET;
-            reindeer.baseY = canvas.height * GAME_CONFIG.REINDEER_Y_RATIO;
-            reindeer.y = reindeer.baseY;
-            reindeer.bobOffset = 0;
-            reindeer.legOffset = 0;
-            
-            scoreEl.textContent = `Score: ${score}`;
-        }
-
-        function resetGame() {
-            startGame();
-        }
-
-        function gameOver() {
-            stopMusic();
-            playSound('hit');
-            gameRunning = false;
-            finalScoreEl.textContent = score;
-            gameOverScreen.classList.remove('hidden');
-        }
-
-        function jump() {
-            if (!gameRunning) return;
-
-            if (cat.grounded) {
-                playSound('jump');
-                cat.dy = cat.jumpForce * scale;
-                cat.grounded = false;
-            }
-        }
-
-        document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') {
-                e.preventDefault();
-                if (!gameRunning && !startScreen.classList.contains('hidden')) {
-                    startGame();
-                } else if (!gameRunning && !gameOverScreen.classList.contains('hidden')) {
-                    resetGame();
-                } else {
-                    jump();
-                }
-            }
-        });
-
-        document.addEventListener('touchstart', (e) => {
-            if (e.target.tagName !== 'BUTTON') {
-                e.preventDefault();
-                jump();
-            }
-        }, { passive: false });
-
-        // Prevent pinch-to-zoom and other gestures
-        document.addEventListener('touchmove', (e) => {
-            if (e.target.tagName !== 'BUTTON' && e.touches.length > 1) {
-                e.preventDefault();
-            }
-        }, { passive: false });
-
-        document.addEventListener('gesturestart', (e) => {
-            e.preventDefault();
-        }, { passive: false });
-
-        document.addEventListener('gesturechange', (e) => {
-            e.preventDefault();
-        }, { passive: false });
-
-        document.addEventListener('gestureend', (e) => {
-            e.preventDefault();
-        }, { passive: false });
-
-        document.addEventListener('mousedown', (e) => {
-            if (e.target.tagName !== 'BUTTON') {
-                jump();
-            }
-        });
-
-        function spawnObstacle() {
-            const distanceToLast = obstacles.length > 0
-                ? canvas.width - obstacles[obstacles.length - 1].x
-                : Infinity;
-
-            if (obstacles.length === 0 || distanceToLast > nextSpawnGap) {
-                obstacles.push(new Obstacle());
-                const minGap = OBSTACLE_CONFIG.MIN_GAP * scale;
-                const maxGap = OBSTACLE_CONFIG.MAX_GAP * scale;
-                nextSpawnGap = minGap + Math.random() * (maxGap - minGap);
-            }
-        }
-
-        // ============================================
-        // GAME LOGIC
-        // ============================================
-        function checkCollision(catX, catY, catW, catH, obsX, obsY, obsW, obsH) {
-            return catX < obsX + obsW &&
-                   catX + catW > obsX &&
-                   catY < obsY + obsH &&
-                   catY + catH > obsY;
-        }
-
-        function update(deltaTime) {
-            gameSpeed += GAME_CONFIG.SPEED_INCREMENT;
-
-            // Update cat physics
-            cat.dy += cat.gravity * scale;
-            cat.y += cat.dy;
-
-            const catSize = GAME_CONFIG.CAT_SIZE * scale;
-            const floorY = canvas.height - groundHeight - catSize;
-
-            if (cat.y > floorY) {
-                cat.y = floorY;
-                cat.dy = 0;
-                cat.grounded = true;
-                cat.rotation = 0;
-            } else {
-                cat.grounded = false;
-                cat.rotation = Math.min(
-                    ANIMATION_CONFIG.CAT_ROTATION_MAX,
-                    Math.max(-ANIMATION_CONFIG.CAT_ROTATION_MAX, cat.dy / 10)
+                // 2. Draw Background (Static)
+                this.add.rectangle(
+                    this.scale.width / 2,
+                    this.scale.height / 2,
+                    this.scale.width,
+                    this.scale.height,
+                    COLORS.BACKGROUND
                 );
-            }
 
-            spawnObstacle();
-
-            // Update and check obstacles
-            for (let i = obstacles.length - 1; i >= 0; i--) {
-                const obs = obstacles[i];
-                obs.update();
-
-                if (obs.x + obs.width < 0) {
-                    obstacles.splice(i, 1);
-                    score++;
-                    scoreEl.textContent = `Score: ${score}`;
-                    continue;
+                // 3. Generate Candy Cane Texture (Procedural)
+                if (!this.textures.exists('candyCane')) {
+                    const graphics = this.make.graphics({ x: 0, y: 0, add: false });
+                    graphics.fillStyle(0xffffff); // White
+                    graphics.fillRect(0, 0, 20, 60);
+                    graphics.fillStyle(0xff0000); // Red stripes
+                    graphics.fillRect(0, 10, 20, 10);
+                    graphics.fillRect(0, 30, 20, 10);
+                    graphics.fillRect(0, 50, 20, 10);
+                    graphics.generateTexture('candyCane', 20, 60);
                 }
 
-                // Collision detection
-                const hitX = cat.x + PHYSICS_CONFIG.CAT_HITBOX_PADDING;
-                const hitY = cat.y + PHYSICS_CONFIG.CAT_HITBOX_PADDING;
-                const hitW = catSize - PHYSICS_CONFIG.CAT_HITBOX_WIDTH_OFFSET;
-                const hitH = catSize - PHYSICS_CONFIG.CAT_HITBOX_HEIGHT_OFFSET;
+                // 4. Draw Ground
+                this.groundHeight = this.scale.height * GAME_CONFIG.GROUND_HEIGHT_RATIO;
 
-                if (checkCollision(hitX, hitY, hitW, hitH, obs.x, obs.y, obs.width, obs.height)) {
-                    gameOver();
-                    return;
+                this.ground = this.add.graphics();
+                this.ground.fillStyle(COLORS.GROUND, 1);
+                this.ground.fillRect(0, this.scale.height - this.groundHeight, this.scale.width, this.groundHeight);
+
+                // Ground Border
+                this.ground.fillStyle(COLORS.GROUND_BORDER, 1);
+                this.ground.fillRect(0, this.scale.height - this.groundHeight, this.scale.width, 10);
+
+                // 5. The Player (Cat)
+                this.cat = this.add.text(50, 0, "🐈‍⬛", {
+                    fontSize: '40px'
+                });
+                this.cat.setOrigin(0.5, 0.5);
+                this.cat.setFlipX(true); // Face Right
+
+                this.physics.add.existing(this.cat);
+                this.cat.body.setCollideWorldBounds(true);
+                this.cat.body.setGravityY(1000);
+                this.cat.body.setSize(30, 30);
+                this.cat.body.setOffset(5, 5);
+
+                // 6. The Reindeer (Goal)
+                this.reindeer = this.add.text(this.scale.width - 100, this.scale.height - this.groundHeight - 200, "🦌", {
+                    fontSize: '60px'
+                });
+                this.reindeer.setOrigin(0.5, 0.5);
+                this.reindeer.setFlipX(true);
+
+                this.tweens.add({
+                    targets: this.reindeer,
+                    y: this.reindeer.y - 20,
+                    duration: 1000,
+                    yoyo: true,
+                    repeat: -1,
+                    ease: 'Sine.easeInOut'
+                });
+
+                // 7. Obstacles Group
+                this.obstacles = this.physics.add.group();
+
+                // Spawn Timer
+                this.spawnEvent = this.time.addEvent({
+                    delay: 2000,
+                    callback: this.spawnObstacle,
+                    callbackScope: this,
+                    loop: true,
+                    paused: true // Start paused
+                });
+
+                // 8. Physics Floor
+                this.physicsFloor = this.add.rectangle(
+                    this.scale.width / 2,
+                    this.scale.height - this.groundHeight,
+                    this.scale.width,
+                    10,
+                    0x000000,
+                    0
+                );
+                this.physics.add.existing(this.physicsFloor, true);
+
+                this.physics.add.collider(this.cat, this.physicsFloor, () => {
+                    this.cat.isGrounded = true;
+                    this.cat.rotation = 0;
+                });
+
+                // 9. Collision Logic
+                this.physics.add.overlap(this.cat, this.obstacles, this.hitObstacle, null, this);
+
+                // 10. Input
+                this.input.on('pointerdown', this.handleInput, this);
+                this.input.keyboard.on('keydown-SPACE', this.handleInput, this);
+
+                // 11. UI Integration
+                this.scoreText = this.add.text(20, 20, 'Score: 0', {
+                    fontSize: '32px',
+                    fill: '#fff',
+                    fontFamily: 'Segoe UI, sans-serif'
+                });
+                this.scoreText.setDepth(10);
+                this.scoreText.setVisible(false);
+
+                // HTML UI Event Listeners
+                document.getElementById('start-btn').onclick = () => this.startGame();
+                document.getElementById('restart-btn').onclick = () => this.startGame();
+
+                this.scale.on('resize', this.resize, this);
+            }
+
+            startGame() {
+                this.isGameRunning = true;
+                this.score = 0;
+                this.scoreText.setText('Score: 0');
+                this.scoreText.setVisible(true);
+
+                document.getElementById('start-screen').style.display = 'none';
+                document.getElementById('game-over-screen').style.display = 'none';
+
+                // Reset entities
+                this.obstacles.clear(true, true);
+                this.cat.y = 0;
+                this.cat.body.setVelocity(0, 0);
+                this.cat.rotation = 0;
+
+                this.spawnEvent.paused = false;
+                this.physics.resume();
+            }
+
+            handleInput() {
+                if (!this.isGameRunning) return;
+                this.jump();
+            }
+
+            spawnObstacle() {
+                if (!this.isGameRunning) return;
+
+                const x = this.scale.width;
+                const y = this.scale.height - this.groundHeight - 30;
+
+                const obstacle = this.obstacles.create(x, y, 'candyCane');
+                obstacle.setOrigin(0.5, 0.5);
+                obstacle.setVelocityX(-300 - (this.score * 10)); // Get faster over time
+                obstacle.body.allowGravity = false;
+                obstacle.body.setImmovable(true);
+            }
+
+            hitObstacle(cat, obstacle) {
+                if (!this.isGameRunning) return;
+
+                this.isGameRunning = false;
+                this.physics.pause();
+                this.spawnEvent.paused = true;
+
+                // Game Over UI
+                document.getElementById('final-score').textContent = this.score;
+                document.getElementById('game-over-screen').style.display = 'block';
+            }
+
+            jump() {
+                if (this.cat.isGrounded) {
+                    this.cat.body.setVelocityY(-600);
+                    this.cat.isGrounded = false;
+                    this.tweens.add({
+                        targets: this.cat,
+                        angle: 360,
+                        duration: 600,
+                        ease: 'Cubic.easeOut'
+                    });
                 }
             }
 
-            // Update particles
-            snowParticles.forEach(snow => snow.update());
+            resize(gameSize) {
+                const width = gameSize.width;
+                const height = gameSize.height;
 
-            // Update reindeer animation
-            reindeer.bobOffset += reindeer.bobSpeed * deltaTime;
-            reindeer.y = reindeer.baseY + Math.sin(reindeer.bobOffset) * (ANIMATION_CONFIG.REINDEER_BOB_AMPLITUDE * scale);
-            reindeer.legOffset += reindeer.legSpeed * deltaTime;
+                this.cameras.main.setViewport(0, 0, width, height);
+                this.physics.world.setBounds(0, 0, width, height);
+
+                this.ground.clear();
+                this.groundHeight = height * GAME_CONFIG.GROUND_HEIGHT_RATIO;
+                this.ground.fillStyle(COLORS.GROUND, 1);
+                this.ground.fillRect(0, height - this.groundHeight, width, this.groundHeight);
+                this.ground.fillStyle(COLORS.GROUND_BORDER, 1);
+                this.ground.fillRect(0, height - this.groundHeight, width, 10);
+
+                this.physicsFloor.y = height - this.groundHeight;
+                this.physicsFloor.body.updateFromGameObject();
+
+                if (this.cat.y > height - this.groundHeight) {
+                    this.cat.y = height - this.groundHeight - 50;
+                }
+
+                this.reindeer.x = width - 100;
+                this.reindeer.y = height - this.groundHeight - 200;
+            }
+
+            update() {
+                if (!this.isGameRunning) return;
+
+                this.obstacles.children.iterate((obstacle) => {
+                    if (obstacle && obstacle.x < -50) {
+                        obstacle.destroy();
+                        this.score++;
+                        this.scoreText.setText('Score: ' + this.score);
+                    }
+                });
+            }
         }
 
         // ============================================
-        // RENDERING
+        // GAME INITIALIZATION
         // ============================================
-        function drawEmoji(x, y, sprite, size, rotation = 0, flipX = false) {
-            ctx.save();
-            ctx.translate(x, y);
-            if (rotation !== 0) ctx.rotate(rotation);
-            if (flipX) ctx.scale(-1, 1);
-            ctx.font = `${size * scale}px serif`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(sprite, 0, 0);
-            ctx.restore();
-        }
+        const config = {
+            type: Phaser.AUTO,
+            parent: 'game-container',
+            width: window.innerWidth,
+            height: window.innerHeight,
+            backgroundColor: '#1A2E44',
+            scale: {
+                mode: Phaser.Scale.RESIZE, // Responsive
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 0 },
+                    debug: false // Set to true to see hitboxes
+                }
+            },
+            scene: [GameScene]
+        };
 
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const game = new Phaser.Game(config);
 
-            // Background layers
-            snowParticles.forEach(snow => snow.draw());
-
-            // Ground
-            ctx.fillStyle = COLORS.SNOW_GROUND;
-            ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
-
-            ctx.fillStyle = COLORS.SNOW_BORDER;
-            ctx.fillRect(0, canvas.height - groundHeight, canvas.width, 10);
-
-            // Reindeer
-            const reindeerRotation = Math.sin(reindeer.legOffset) * ANIMATION_CONFIG.REINDEER_LEG_ROTATION;
-            drawEmoji(
-                reindeer.x,
-                reindeer.y,
-                reindeer.sprite,
-                GAME_CONFIG.REINDEER_SIZE,
-                reindeerRotation,
-                true
-            );
-
-            // Obstacles
-            obstacles.forEach(obs => obs.draw());
-
-            // Cat
-            const catSize = GAME_CONFIG.CAT_SIZE * scale;
-            drawEmoji(
-                cat.x + catSize / 2,
-                cat.y + catSize / 2,
-                cat.sprite,
-                GAME_CONFIG.CAT_SIZE,
-                cat.rotation,
-                true
-            );
-        }
-
-        function gameLoop(time) {
-            if (!gameRunning) return;
-
-            const deltaTime = time - lastTime;
-            lastTime = time;
-
-            update(deltaTime);
-            draw();
-
-            requestAnimationFrame(gameLoop);
-        }
-
-        resize();
-        draw();
+        // Focus handling
+        window.addEventListener('focus', () => {
+            if (game) game.step();
+        });
 
     </script>
 </body>
