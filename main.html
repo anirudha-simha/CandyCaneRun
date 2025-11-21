@@ -119,15 +119,90 @@
     <div id="game-container"></div>
 
     <script>
+        // ===== CONFIGURATION CONSTANTS =====
+
+        // Color palette
         const COLORS = {
             BACKGROUND: 0x1A2E44,
             GROUND: 0xE0F2F7,
-            GROUND_BORDER: 0xC5E4ED
+            GROUND_BORDER: 0xC5E4ED,
+            MOUNTAIN: 0x2C4A6B,
+            MOON: 0xFFF8DC
         };
 
+        // Game configuration
         const GAME_CONFIG = {
-            GROUND_HEIGHT_RATIO: 0.15
+            GROUND_HEIGHT_RATIO: 0.15,
+            OBSTACLE_SPAWN_DELAY: 2000,
+            OBSTACLE_BASE_SPEED: 300,
+            OBSTACLE_SPEED_INCREMENT: 10,
+            OBSTACLE_SIZE: { width: 20, height: 60 }
         };
+
+        // Player configuration
+        const PLAYER_CONFIG = {
+            JUMP_VELOCITY: -600,
+            GRAVITY: 1000,
+            SIZE: 30,
+            OFFSET: 5,
+            ROTATION_DURATION: 600,
+            FONT_SIZE: '40px'
+        };
+
+        // Mountain configuration
+        const MOUNTAIN_CONFIG = {
+            NUM_PEAKS: 8,
+            PEAK_SPACING: 300,
+            PEAK_SPACING_VARIANCE: 100,
+            MIN_WIDTH: 200,
+            MAX_WIDTH: 500,
+            HEIGHT_RATIO: 0.6,
+            MIN_HEIGHT_PERCENT: 0.4,
+            SCROLL_SPEED: 0.5,
+            ALPHA: 1.0
+        };
+
+        // Snow particle configuration
+        const SNOW_CONFIG = {
+            LIFESPAN_MIN: 8000,
+            LIFESPAN_MAX: 15000,
+            SPEED_Y_MIN: 30,
+            SPEED_Y_MAX: 120,
+            SPEED_X_MIN: -30,
+            SPEED_X_MAX: 30,
+            SCALE_START: 0.3,
+            SCALE_END: 2,
+            QUANTITY: 5,
+            FREQUENCY: 50
+        };
+
+        // Audio configuration
+        const AUDIO_CONFIG = {
+            SYNTH_VOLUME: -8,
+            JUMP_VOLUME: -10,
+            HIT_VOLUME: -5,
+            BPM: 120,
+            REVERB_DECAY: 2,
+            REVERB_WET: 0.3
+        };
+
+        // UI configuration
+        const UI_CONFIG = {
+            MOON_RADIUS: 40,
+            MOON_ALPHA: 0.9,
+            MOON_OFFSET_X: 100,
+            MOON_OFFSET_Y: 80,
+            REINDEER_FONT_SIZE: '60px',
+            REINDEER_OFFSET_X: 100,
+            REINDEER_OFFSET_Y: 200,
+            REINDEER_BOB_DISTANCE: 20,
+            REINDEER_BOB_DURATION: 1000,
+            SCORE_FONT_SIZE: '32px',
+            SCORE_OFFSET_X: 20,
+            SCORE_OFFSET_Y: 20
+        };
+
+        // ===== GAME SCENE =====
 
         class GameScene extends Phaser.Scene {
             constructor() {
@@ -142,6 +217,23 @@
 
                 this.physics.world.setBounds(0, 0, this.scale.width, this.scale.height);
 
+                this.createBackground();
+                this.createMoon();
+                this.createMountains();
+                this.createSnow();
+                this.createObstacleTexture();
+                this.createGround();
+                this.createPlayer();
+                this.createReindeer();
+                this.createObstacleSystem();
+                this.createPhysics();
+                this.createInput();
+                this.createUI();
+
+                this.scale.on('resize', this.resize, this);
+            }
+
+            createBackground() {
                 const background = this.add.rectangle(
                     this.scale.width / 2,
                     this.scale.height / 2,
@@ -150,15 +242,27 @@
                     COLORS.BACKGROUND
                 );
                 background.setDepth(-3);
+            }
 
-                this.moon = this.add.circle(this.scale.width - 100, 80, 40, 0xFFF8DC, 0.9);
+            createMoon() {
+                this.moon = this.add.circle(
+                    this.scale.width - UI_CONFIG.MOON_OFFSET_X,
+                    UI_CONFIG.MOON_OFFSET_Y,
+                    UI_CONFIG.MOON_RADIUS,
+                    COLORS.MOON,
+                    UI_CONFIG.MOON_ALPHA
+                );
                 this.moon.setDepth(-2);
+            }
 
+            createMountains() {
                 this.hillsGraphics = this.add.graphics();
                 this.hillsGraphics.setDepth(-1);
                 this.generateMountainPeaks();
                 this.drawHills();
+            }
 
+            createSnow() {
                 const snowGraphics = this.make.graphics({ x: 0, y: 0, add: false });
                 snowGraphics.fillStyle(0xffffff);
                 snowGraphics.fillCircle(2, 2, 2);
@@ -167,25 +271,29 @@
                 this.snowEmitter = this.add.particles(0, 0, 'snowflake', {
                     x: { min: 0, max: this.scale.width },
                     y: -10,
-                    lifespan: { min: 8000, max: 15000 },
-                    speedY: { min: 30, max: 120 },
-                    speedX: { min: -30, max: 30 },
-                    scale: { start: 0.3, end: 2 },
-                    quantity: 5,
-                    frequency: 50
+                    lifespan: { min: SNOW_CONFIG.LIFESPAN_MIN, max: SNOW_CONFIG.LIFESPAN_MAX },
+                    speedY: { min: SNOW_CONFIG.SPEED_Y_MIN, max: SNOW_CONFIG.SPEED_Y_MAX },
+                    speedX: { min: SNOW_CONFIG.SPEED_X_MIN, max: SNOW_CONFIG.SPEED_X_MAX },
+                    scale: { start: SNOW_CONFIG.SCALE_START, end: SNOW_CONFIG.SCALE_END },
+                    quantity: SNOW_CONFIG.QUANTITY,
+                    frequency: SNOW_CONFIG.FREQUENCY
                 });
+            }
 
+            createObstacleTexture() {
                 if (!this.textures.exists('candyCane')) {
                     const graphics = this.make.graphics({ x: 0, y: 0, add: false });
                     graphics.fillStyle(0xffffff);
-                    graphics.fillRect(0, 0, 20, 60);
+                    graphics.fillRect(0, 0, GAME_CONFIG.OBSTACLE_SIZE.width, GAME_CONFIG.OBSTACLE_SIZE.height);
                     graphics.fillStyle(0xff0000);
-                    graphics.fillRect(0, 10, 20, 10);
-                    graphics.fillRect(0, 30, 20, 10);
-                    graphics.fillRect(0, 50, 20, 10);
-                    graphics.generateTexture('candyCane', 20, 60);
+                    graphics.fillRect(0, 10, GAME_CONFIG.OBSTACLE_SIZE.width, 10);
+                    graphics.fillRect(0, 30, GAME_CONFIG.OBSTACLE_SIZE.width, 10);
+                    graphics.fillRect(0, 50, GAME_CONFIG.OBSTACLE_SIZE.width, 10);
+                    graphics.generateTexture('candyCane', GAME_CONFIG.OBSTACLE_SIZE.width, GAME_CONFIG.OBSTACLE_SIZE.height);
                 }
+            }
 
+            createGround() {
                 this.groundHeight = this.scale.height * GAME_CONFIG.GROUND_HEIGHT_RATIO;
 
                 this.ground = this.add.graphics();
@@ -193,40 +301,53 @@
                 this.ground.fillRect(0, this.scale.height - this.groundHeight, this.scale.width, this.groundHeight);
                 this.ground.fillStyle(COLORS.GROUND_BORDER, 1);
                 this.ground.fillRect(0, this.scale.height - this.groundHeight, this.scale.width, 10);
+            }
 
-                this.cat = this.add.text(50, 0, "🐈‍⬛", { fontSize: '40px' });
+            createPlayer() {
+                this.cat = this.add.text(50, 0, "🐈‍⬛", { fontSize: PLAYER_CONFIG.FONT_SIZE });
                 this.cat.setOrigin(0.5, 0.5);
                 this.cat.setFlipX(true);
 
                 this.physics.add.existing(this.cat);
                 this.cat.body.setCollideWorldBounds(true);
-                this.cat.body.setGravityY(1000);
-                this.cat.body.setSize(30, 30);
-                this.cat.body.setOffset(5, 5);
+                this.cat.body.setGravityY(PLAYER_CONFIG.GRAVITY);
+                this.cat.body.setSize(PLAYER_CONFIG.SIZE, PLAYER_CONFIG.SIZE);
+                this.cat.body.setOffset(PLAYER_CONFIG.OFFSET, PLAYER_CONFIG.OFFSET);
+            }
 
-                this.reindeer = this.add.text(this.scale.width - 100, this.scale.height - this.groundHeight - 200, "🦌", { fontSize: '60px' });
+            createReindeer() {
+                this.reindeer = this.add.text(
+                    this.scale.width - UI_CONFIG.REINDEER_OFFSET_X,
+                    this.scale.height - this.groundHeight - UI_CONFIG.REINDEER_OFFSET_Y,
+                    "🦌",
+                    { fontSize: UI_CONFIG.REINDEER_FONT_SIZE }
+                );
                 this.reindeer.setOrigin(0.5, 0.5);
                 this.reindeer.setFlipX(true);
 
                 this.tweens.add({
                     targets: this.reindeer,
-                    y: this.reindeer.y - 20,
-                    duration: 1000,
+                    y: this.reindeer.y - UI_CONFIG.REINDEER_BOB_DISTANCE,
+                    duration: UI_CONFIG.REINDEER_BOB_DURATION,
                     yoyo: true,
                     repeat: -1,
                     ease: 'Sine.easeInOut'
                 });
+            }
 
+            createObstacleSystem() {
                 this.obstacles = this.physics.add.group();
 
                 this.spawnEvent = this.time.addEvent({
-                    delay: 2000,
+                    delay: GAME_CONFIG.OBSTACLE_SPAWN_DELAY,
                     callback: this.spawnObstacle,
                     callbackScope: this,
                     loop: true,
                     paused: true
                 });
+            }
 
+            createPhysics() {
                 this.physicsFloor = this.add.rectangle(
                     this.scale.width / 2,
                     this.scale.height - this.groundHeight,
@@ -243,36 +364,43 @@
                 });
 
                 this.physics.add.overlap(this.cat, this.obstacles, this.hitObstacle, null, this);
+            }
 
+            createInput() {
                 this.input.on('pointerdown', this.handleInput, this);
                 this.input.keyboard.on('keydown-SPACE', this.handleInput, this);
+            }
 
-                this.scoreText = this.add.text(20, 20, 'Score: 0', {
-                    fontSize: '32px',
-                    fill: '#fff',
-                    fontFamily: 'Segoe UI, sans-serif'
-                });
+            createUI() {
+                this.scoreText = this.add.text(
+                    UI_CONFIG.SCORE_OFFSET_X,
+                    UI_CONFIG.SCORE_OFFSET_Y,
+                    'Score: 0',
+                    {
+                        fontSize: UI_CONFIG.SCORE_FONT_SIZE,
+                        fill: '#fff',
+                        fontFamily: 'Segoe UI, sans-serif'
+                    }
+                );
                 this.scoreText.setDepth(10);
                 this.scoreText.setVisible(false);
 
                 document.getElementById('start-btn').onclick = () => this.startGame();
                 document.getElementById('restart-btn').onclick = () => this.startGame();
-
-                this.scale.on('resize', this.resize, this);
             }
 
             generateMountainPeaks() {
                 const height = this.scale.height;
-                const maxMountainHeight = height * 0.6;
+                const maxMountainHeight = height * MOUNTAIN_CONFIG.HEIGHT_RATIO;
 
                 this.mountainPeaks = [];
-                const numPeaks = 8;
 
-                for (let i = 0; i < numPeaks; i++) {
+                for (let i = 0; i < MOUNTAIN_CONFIG.NUM_PEAKS; i++) {
                     this.mountainPeaks.push({
-                        x: i * 300 + Math.random() * 100,
-                        width: 200 + Math.random() * 300,
-                        height: maxMountainHeight * 0.4 + Math.random() * maxMountainHeight * 0.6
+                        x: i * MOUNTAIN_CONFIG.PEAK_SPACING + Math.random() * MOUNTAIN_CONFIG.PEAK_SPACING_VARIANCE,
+                        width: MOUNTAIN_CONFIG.MIN_WIDTH + Math.random() * (MOUNTAIN_CONFIG.MAX_WIDTH - MOUNTAIN_CONFIG.MIN_WIDTH),
+                        height: maxMountainHeight * MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT +
+                            Math.random() * maxMountainHeight * (1 - MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT)
                     });
                 }
             }
@@ -282,12 +410,9 @@
                 const width = this.scale.width;
                 const height = this.scale.height;
                 const groundY = height - this.groundHeight;
-                const maxMountainHeight = height * 0.6;
+                const maxMountainHeight = height * MOUNTAIN_CONFIG.HEIGHT_RATIO;
 
-                const mountainColor = 0x2C4A6B;
-                const mountainAlpha = 1.0;
-
-                this.hillsGraphics.fillStyle(mountainColor, mountainAlpha);
+                this.hillsGraphics.fillStyle(COLORS.MOUNTAIN, MOUNTAIN_CONFIG.ALPHA);
                 this.hillsGraphics.beginPath();
 
                 this.hillsGraphics.moveTo(-200, height);
@@ -316,14 +441,16 @@
                 this.hillsGraphics.closePath();
                 this.hillsGraphics.fillPath();
 
+                // Recycle peaks
                 const firstPeak = this.mountainPeaks[0];
                 if (firstPeak.x + firstPeak.width - this.mountainOffset < -300) {
                     this.mountainPeaks.shift();
                     const lastPeak = this.mountainPeaks[this.mountainPeaks.length - 1];
                     this.mountainPeaks.push({
-                        x: lastPeak.x + 300 + Math.random() * 100,
-                        width: 200 + Math.random() * 300,
-                        height: maxMountainHeight * 0.4 + Math.random() * maxMountainHeight * 0.6
+                        x: lastPeak.x + MOUNTAIN_CONFIG.PEAK_SPACING + Math.random() * MOUNTAIN_CONFIG.PEAK_SPACING_VARIANCE,
+                        width: MOUNTAIN_CONFIG.MIN_WIDTH + Math.random() * (MOUNTAIN_CONFIG.MAX_WIDTH - MOUNTAIN_CONFIG.MIN_WIDTH),
+                        height: maxMountainHeight * MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT +
+                            Math.random() * maxMountainHeight * (1 - MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT)
                     });
                 }
             }
@@ -338,19 +465,22 @@
                     oscillator: { type: "sine" },
                     envelope: { attack: 0.005, decay: 0.2, sustain: 0.4, release: 1.5 }
                 }).toDestination();
-                this.synth.volume.value = -8;
+                this.synth.volume.value = AUDIO_CONFIG.SYNTH_VOLUME;
 
-                const reverb = new Tone.Reverb({ decay: 2, wet: 0.3 }).toDestination();
+                const reverb = new Tone.Reverb({
+                    decay: AUDIO_CONFIG.REVERB_DECAY,
+                    wet: AUDIO_CONFIG.REVERB_WET
+                }).toDestination();
                 this.synth.connect(reverb);
 
                 this.jumpSynth = new Tone.Synth({
                     oscillator: { type: "square" },
                     envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 }
                 }).toDestination();
-                this.jumpSynth.volume.value = -10;
+                this.jumpSynth.volume.value = AUDIO_CONFIG.JUMP_VOLUME;
 
                 this.hitSynth = new Tone.MembraneSynth().toDestination();
-                this.hitSynth.volume.value = -5;
+                this.hitSynth.volume.value = AUDIO_CONFIG.HIT_VOLUME;
 
                 const melody = [
                     ["0:0", "E4"], ["0:1", "E4"], ["0:2", "E4"],
@@ -370,7 +500,7 @@
                 this.musicPart.loop = true;
                 this.musicPart.loopEnd = "8m";
 
-                Tone.Transport.bpm.value = 120;
+                Tone.Transport.bpm.value = AUDIO_CONFIG.BPM;
             }
 
             startGame() {
@@ -409,7 +539,7 @@
 
                 const obstacle = this.obstacles.create(x, y, 'candyCane');
                 obstacle.setOrigin(0.5, 0.5);
-                obstacle.setVelocityX(-300 - (this.score * 10));
+                obstacle.setVelocityX(-(GAME_CONFIG.OBSTACLE_BASE_SPEED + (this.score * GAME_CONFIG.OBSTACLE_SPEED_INCREMENT)));
                 obstacle.body.allowGravity = false;
                 obstacle.body.setImmovable(true);
             }
@@ -433,7 +563,7 @@
 
             jump() {
                 if (this.cat.isGrounded) {
-                    this.cat.body.setVelocityY(-600);
+                    this.cat.body.setVelocityY(PLAYER_CONFIG.JUMP_VELOCITY);
                     this.cat.isGrounded = false;
 
                     if (this.audioStarted) {
@@ -443,7 +573,7 @@
                     this.tweens.add({
                         targets: this.cat,
                         angle: 360,
-                        duration: 600,
+                        duration: PLAYER_CONFIG.ROTATION_DURATION,
                         ease: 'Cubic.easeOut'
                     });
                 }
@@ -470,10 +600,10 @@
                     this.cat.y = height - this.groundHeight - 50;
                 }
 
-                this.reindeer.x = width - 100;
-                this.reindeer.y = height - this.groundHeight - 200;
+                this.reindeer.x = width - UI_CONFIG.REINDEER_OFFSET_X;
+                this.reindeer.y = height - this.groundHeight - UI_CONFIG.REINDEER_OFFSET_Y;
 
-                this.moon.x = width - 100;
+                this.moon.x = width - UI_CONFIG.MOON_OFFSET_X;
 
                 this.generateMountainPeaks();
                 this.drawHills();
@@ -487,7 +617,7 @@
             update() {
                 if (!this.isGameRunning) return;
 
-                this.mountainOffset += 0.5;
+                this.mountainOffset += MOUNTAIN_CONFIG.SCROLL_SPEED;
                 this.drawHills();
 
                 this.obstacles.children.iterate((obstacle) => {
@@ -499,6 +629,8 @@
                 });
             }
         }
+
+        // ===== GAME INITIALIZATION =====
 
         const config = {
             type: Phaser.AUTO,
