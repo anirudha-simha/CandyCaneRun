@@ -151,7 +151,7 @@
                 this.snowEmitter = this.add.particles(0, 0, 'snowflake', {
                     x: { min: 0, max: this.scale.width },
                     y: -10,
-                    lifespan: 8000,
+                    lifespan: { min: 8000, max: 15000 },
                     speedY: { min: 30, max: 120 },
                     speedX: { min: -30, max: 30 },
                     scale: { start: 0.3, end: 2 },
@@ -269,7 +269,7 @@
                 const maxMountainHeight = height * 0.6;
 
                 const mountainColor = 0x2C4A6B;
-                const mountainAlpha = 0.5;
+                const mountainAlpha = 1.0;
 
                 this.hillsGraphics.fillStyle(mountainColor, mountainAlpha);
                 this.hillsGraphics.beginPath();
