@@ -122,10 +122,10 @@
                 this.isGameRunning = false;
                 this.score = 0;
                 this.audioStarted = false;
+                this.mountainOffset = 0;
 
                 this.physics.world.setBounds(0, 0, this.scale.width, this.scale.height);
 
-                // Background (behind everything)
                 const background = this.add.rectangle(
                     this.scale.width / 2,
                     this.scale.height / 2,
@@ -135,16 +135,14 @@
                 );
                 background.setDepth(-3);
 
-                // Moon (in front of background)
                 this.moon = this.add.circle(this.scale.width - 100, 80, 40, 0xFFF8DC, 0.9);
                 this.moon.setDepth(-2);
 
-                // Randomized Mountains Background
                 this.hillsGraphics = this.add.graphics();
                 this.hillsGraphics.setDepth(-1);
+                this.generateMountainPeaks();
                 this.drawHills();
 
-                // Enhanced Snow Particles (5x more!)
                 const snowGraphics = this.make.graphics({ x: 0, y: 0, add: false });
                 snowGraphics.fillStyle(0xffffff);
                 snowGraphics.fillCircle(2, 2, 2);
@@ -247,47 +245,71 @@
                 this.scale.on('resize', this.resize, this);
             }
 
+            generateMountainPeaks() {
+                const height = this.scale.height;
+                const maxMountainHeight = height * 0.6;
+
+                this.mountainPeaks = [];
+                const numPeaks = 8;
+
+                for (let i = 0; i < numPeaks; i++) {
+                    this.mountainPeaks.push({
+                        x: i * 300 + Math.random() * 100,
+                        width: 200 + Math.random() * 300,
+                        height: maxMountainHeight * 0.4 + Math.random() * maxMountainHeight * 0.6
+                    });
+                }
+            }
+
             drawHills() {
                 this.hillsGraphics.clear();
                 const width = this.scale.width;
                 const height = this.scale.height;
                 const groundY = height - this.groundHeight;
+                const maxMountainHeight = height * 0.6;
 
-                // Single color for distant mountain effect
                 const mountainColor = 0x2C4A6B;
                 const mountainAlpha = 0.5;
-
-                // Generate random seed for this instance (stays same until resize)
-                if (!this.hillSeed) {
-                    this.hillSeed = Math.random() * 1000;
-                }
 
                 this.hillsGraphics.fillStyle(mountainColor, mountainAlpha);
                 this.hillsGraphics.beginPath();
 
-                // Start at bottom left
-                this.hillsGraphics.moveTo(0, height);
-                this.hillsGraphics.lineTo(0, groundY);
+                this.hillsGraphics.moveTo(-200, height);
+                this.hillsGraphics.lineTo(-200, groundY);
 
-                // Draw randomized mountain peaks using multiple sine waves
-                for (let x = 0; x <= width; x += 10) {
-                    // Combine multiple sine waves with different frequencies for natural variation
-                    const wave1 = Math.sin((x + this.hillSeed) * 0.002) * 150;
-                    const wave2 = Math.sin((x + this.hillSeed) * 0.003) * 100;
-                    const wave3 = Math.sin((x + this.hillSeed) * 0.001) * 200;
+                this.mountainPeaks.forEach((peak) => {
+                    const peakX = peak.x - this.mountainOffset;
 
-                    // Combine waves for varied, tall mountain peaks
-                    const y = groundY - (wave1 + wave2 + wave3);
-                    this.hillsGraphics.lineTo(x, y);
-                }
+                    if (peakX + peak.width > -200 && peakX < width + 200) {
+                        this.hillsGraphics.lineTo(peakX, groundY);
 
-                // Complete the shape back to bottom right
-                this.hillsGraphics.lineTo(width, groundY);
-                this.hillsGraphics.lineTo(width, height);
-                this.hillsGraphics.lineTo(0, height);
+                        for (let x = 0; x <= peak.width; x += 10) {
+                            const progress = x / peak.width;
+                            const y = groundY - Math.sin(progress * Math.PI) * peak.height;
+                            this.hillsGraphics.lineTo(peakX + x, y);
+                        }
+
+                        this.hillsGraphics.lineTo(peakX + peak.width, groundY);
+                    }
+                });
+
+                this.hillsGraphics.lineTo(width + 200, groundY);
+                this.hillsGraphics.lineTo(width + 200, height);
+                this.hillsGraphics.lineTo(-200, height);
 
                 this.hillsGraphics.closePath();
                 this.hillsGraphics.fillPath();
+
+                const firstPeak = this.mountainPeaks[0];
+                if (firstPeak.x + firstPeak.width - this.mountainOffset < -300) {
+                    this.mountainPeaks.shift();
+                    const lastPeak = this.mountainPeaks[this.mountainPeaks.length - 1];
+                    this.mountainPeaks.push({
+                        x: lastPeak.x + 300 + Math.random() * 100,
+                        width: 200 + Math.random() * 300,
+                        height: maxMountainHeight * 0.4 + Math.random() * maxMountainHeight * 0.6
+                    });
+                }
             }
 
             async initAudio() {
@@ -296,14 +318,12 @@
                 await Tone.start();
                 this.audioStarted = true;
 
-                // Improved synth with richer sound
                 this.synth = new Tone.PolySynth(Tone.Synth, {
                     oscillator: { type: "sine" },
                     envelope: { attack: 0.005, decay: 0.2, sustain: 0.4, release: 1.5 }
                 }).toDestination();
                 this.synth.volume.value = -8;
 
-                // Add reverb for atmosphere
                 const reverb = new Tone.Reverb({ decay: 2, wet: 0.3 }).toDestination();
                 this.synth.connect(reverb);
 
@@ -316,18 +336,13 @@
                 this.hitSynth = new Tone.MembraneSynth().toDestination();
                 this.hitSynth.volume.value = -5;
 
-                // Extended Jingle Bells melody
                 const melody = [
-                    // Jingle bells, jingle bells
                     ["0:0", "E4"], ["0:1", "E4"], ["0:2", "E4"],
                     ["1:0", "E4"], ["1:1", "E4"], ["1:2", "E4"],
-                    // Jingle all the way
                     ["2:0", "E4"], ["2:1", "G4"], ["2:2", "C4"], ["2:2.5", "D4"],
                     ["3:0", "E4"],
-                    // Oh what fun it is to ride
                     ["4:0", "F4"], ["4:1", "F4"], ["4:2", "F4"], ["4:3", "F4"],
                     ["5:0", "F4"], ["5:1", "E4"], ["5:2", "E4"], ["5:3", "E4"],
-                    // In a one horse open sleigh
                     ["6:0", "E4"], ["6:1", "D4"], ["6:2", "D4"], ["6:3", "E4"],
                     ["7:0", "D4"], ["7:2", "G4"]
                 ];
@@ -442,11 +457,9 @@
                 this.reindeer.x = width - 100;
                 this.reindeer.y = height - this.groundHeight - 200;
 
-                // Update moon position
                 this.moon.x = width - 100;
 
-                // Regenerate mountains with new random seed
-                this.hillSeed = Math.random() * 1000;
+                this.generateMountainPeaks();
                 this.drawHills();
 
                 this.snowEmitter.setEmitZone({
@@ -457,6 +470,9 @@
 
             update() {
                 if (!this.isGameRunning) return;
+
+                this.mountainOffset += 0.5;
+                this.drawHills();
 
                 this.obstacles.children.iterate((obstacle) => {
                     if (obstacle && obstacle.x < -50) {
