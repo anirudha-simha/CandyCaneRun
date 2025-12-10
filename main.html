@@ -8,6 +8,24 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
+
+    <!-- Favicon and App Icons -->
+    <link rel="icon" type="image/png" href="game_logo.png">
+    <link rel="apple-touch-icon" href="game_logo.png">
+
+    <!-- SEO and Social Sharing -->
+    <meta name="description" content="Help Noodles the cat catch the reindeer in this festive endless runner game!">
+    <meta property="og:title" content="Reindeer Chase">
+    <meta property="og:description"
+        content="Help Noodles the cat catch the reindeer in this festive endless runner game!">
+    <meta property="og:image" content="game_logo.png">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Reindeer Chase">
+    <meta name="twitter:description"
+        content="Help Noodles the cat catch the reindeer in this festive endless runner game!">
+    <meta name="twitter:image" content="game_logo.png">
+
     <title>Reindeer Chase</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
@@ -133,10 +151,13 @@
         // Game configuration
         const GAME_CONFIG = {
             GROUND_HEIGHT_RATIO: 0.15,
-            OBSTACLE_SPAWN_DELAY: 2000,
+            OBSTACLE_SPAWN_DELAY_MIN: 800,
+            OBSTACLE_SPAWN_DELAY_MAX: 2200,
             OBSTACLE_BASE_SPEED: 300,
             OBSTACLE_SPEED_INCREMENT: 10,
-            OBSTACLE_SIZE: { width: 20, height: 60 }
+            OBSTACLE_MIN_HEIGHT: 40,
+            OBSTACLE_MAX_HEIGHT: 90,
+            OBSTACLE_WIDTH: 20
         };
 
         // Player configuration
@@ -151,15 +172,16 @@
 
         // Mountain configuration
         const MOUNTAIN_CONFIG = {
-            NUM_PEAKS: 8,
-            PEAK_SPACING: 300,
-            PEAK_SPACING_VARIANCE: 100,
-            MIN_WIDTH: 200,
-            MAX_WIDTH: 500,
+            NUM_PEAKS: 15,
+            PEAK_SPACING: 400,
+            PEAK_SPACING_VARIANCE: 150,
+            MIN_WIDTH: 400,
+            MAX_WIDTH: 800,
             HEIGHT_RATIO: 0.6,
             MIN_HEIGHT_PERCENT: 0.4,
             SCROLL_SPEED: 0.5,
-            ALPHA: 1.0
+            ALPHA: 1.0,
+            BUFFER_DISTANCE: 800  // Pre-generate hills this far ahead
         };
 
         // Snow particle configuration
@@ -185,6 +207,24 @@
             REVERB_DECAY: 2,
             REVERB_WET: 0.3
         };
+
+        // Music tracks - randomly selected on game start
+        const MUSIC_TRACKS = [
+            {
+                name: "Jingle Bells",
+                loopEnd: "8m",
+                melody: [
+                    ["0:0", "E4"], ["0:1", "E4"], ["0:2", "E4"],
+                    ["1:0", "E4"], ["1:1", "E4"], ["1:2", "E4"],
+                    ["2:0", "E4"], ["2:1", "G4"], ["2:2", "C4"], ["2:2.5", "D4"],
+                    ["3:0", "E4"],
+                    ["4:0", "F4"], ["4:1", "F4"], ["4:2", "F4"], ["4:3", "F4"],
+                    ["5:0", "F4"], ["5:1", "E4"], ["5:2", "E4"], ["5:3", "E4"],
+                    ["6:0", "E4"], ["6:1", "D4"], ["6:2", "D4"], ["6:3", "E4"],
+                    ["7:0", "D4"], ["7:2", "G4"]
+                ]
+            }
+        ];
 
         // UI configuration
         const UI_CONFIG = {
@@ -282,14 +322,18 @@
 
             createObstacleTexture() {
                 if (!this.textures.exists('candyCane')) {
+                    const width = GAME_CONFIG.OBSTACLE_WIDTH;
+                    const height = GAME_CONFIG.OBSTACLE_MAX_HEIGHT;
                     const graphics = this.make.graphics({ x: 0, y: 0, add: false });
                     graphics.fillStyle(0xffffff);
-                    graphics.fillRect(0, 0, GAME_CONFIG.OBSTACLE_SIZE.width, GAME_CONFIG.OBSTACLE_SIZE.height);
+                    graphics.fillRect(0, 0, width, height);
                     graphics.fillStyle(0xff0000);
-                    graphics.fillRect(0, 10, GAME_CONFIG.OBSTACLE_SIZE.width, 10);
-                    graphics.fillRect(0, 30, GAME_CONFIG.OBSTACLE_SIZE.width, 10);
-                    graphics.fillRect(0, 50, GAME_CONFIG.OBSTACLE_SIZE.width, 10);
-                    graphics.generateTexture('candyCane', GAME_CONFIG.OBSTACLE_SIZE.width, GAME_CONFIG.OBSTACLE_SIZE.height);
+                    // Draw red stripes proportionally
+                    const stripeHeight = height / 6;
+                    for (let i = 1; i < 6; i += 2) {
+                        graphics.fillRect(0, i * stripeHeight, width, stripeHeight);
+                    }
+                    graphics.generateTexture('candyCane', width, height);
                 }
             }
 
@@ -337,14 +381,25 @@
 
             createObstacleSystem() {
                 this.obstacles = this.physics.add.group();
+                // spawnEvent will be created dynamically with random delays
+                this.spawnEvent = null;
+            }
 
-                this.spawnEvent = this.time.addEvent({
-                    delay: GAME_CONFIG.OBSTACLE_SPAWN_DELAY,
-                    callback: this.spawnObstacle,
-                    callbackScope: this,
-                    loop: true,
-                    paused: true
-                });
+            getRandomSpawnDelay() {
+                return GAME_CONFIG.OBSTACLE_SPAWN_DELAY_MIN +
+                    Math.random() * (GAME_CONFIG.OBSTACLE_SPAWN_DELAY_MAX - GAME_CONFIG.OBSTACLE_SPAWN_DELAY_MIN);
+            }
+
+            scheduleNextObstacle() {
+                if (!this.isGameRunning) return;
+
+                this.spawnEvent = this.time.delayedCall(
+                    this.getRandomSpawnDelay(),
+                    () => {
+                        this.spawnObstacle();
+                        this.scheduleNextObstacle();
+                    }
+                );
             }
 
             createPhysics() {
@@ -392,12 +447,16 @@
             generateMountainPeaks() {
                 const height = this.scale.height;
                 const maxMountainHeight = height * MOUNTAIN_CONFIG.HEIGHT_RATIO;
+                const buffer = MOUNTAIN_CONFIG.BUFFER_DISTANCE;
 
                 this.mountainPeaks = [];
 
+                // Start generating from before the screen (negative x) to avoid pop-in
+                const startX = -buffer;
+
                 for (let i = 0; i < MOUNTAIN_CONFIG.NUM_PEAKS; i++) {
                     this.mountainPeaks.push({
-                        x: i * MOUNTAIN_CONFIG.PEAK_SPACING + Math.random() * MOUNTAIN_CONFIG.PEAK_SPACING_VARIANCE,
+                        x: startX + i * MOUNTAIN_CONFIG.PEAK_SPACING + Math.random() * MOUNTAIN_CONFIG.PEAK_SPACING_VARIANCE,
                         width: MOUNTAIN_CONFIG.MIN_WIDTH + Math.random() * (MOUNTAIN_CONFIG.MAX_WIDTH - MOUNTAIN_CONFIG.MIN_WIDTH),
                         height: maxMountainHeight * MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT +
                             Math.random() * maxMountainHeight * (1 - MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT)
@@ -411,17 +470,19 @@
                 const height = this.scale.height;
                 const groundY = height - this.groundHeight;
                 const maxMountainHeight = height * MOUNTAIN_CONFIG.HEIGHT_RATIO;
+                const buffer = MOUNTAIN_CONFIG.BUFFER_DISTANCE;
 
                 this.hillsGraphics.fillStyle(COLORS.MOUNTAIN, MOUNTAIN_CONFIG.ALPHA);
                 this.hillsGraphics.beginPath();
 
-                this.hillsGraphics.moveTo(-200, height);
-                this.hillsGraphics.lineTo(-200, groundY);
+                this.hillsGraphics.moveTo(-buffer, height);
+                this.hillsGraphics.lineTo(-buffer, groundY);
 
                 this.mountainPeaks.forEach((peak) => {
                     const peakX = peak.x - this.mountainOffset;
 
-                    if (peakX + peak.width > -200 && peakX < width + 200) {
+                    // Use buffer distance for visibility check to prevent pop-in
+                    if (peakX + peak.width > -buffer && peakX < width + buffer) {
                         this.hillsGraphics.lineTo(peakX, groundY);
 
                         for (let x = 0; x <= peak.width; x += 10) {
@@ -434,16 +495,16 @@
                     }
                 });
 
-                this.hillsGraphics.lineTo(width + 200, groundY);
-                this.hillsGraphics.lineTo(width + 200, height);
-                this.hillsGraphics.lineTo(-200, height);
+                this.hillsGraphics.lineTo(width + buffer, groundY);
+                this.hillsGraphics.lineTo(width + buffer, height);
+                this.hillsGraphics.lineTo(-buffer, height);
 
                 this.hillsGraphics.closePath();
                 this.hillsGraphics.fillPath();
 
-                // Recycle peaks
+                // Recycle peaks - use buffer distance for consistent recycling
                 const firstPeak = this.mountainPeaks[0];
-                if (firstPeak.x + firstPeak.width - this.mountainOffset < -300) {
+                if (firstPeak.x + firstPeak.width - this.mountainOffset < -buffer) {
                     this.mountainPeaks.shift();
                     const lastPeak = this.mountainPeaks[this.mountainPeaks.length - 1];
                     this.mountainPeaks.push({
@@ -482,29 +543,33 @@
                 this.hitSynth = new Tone.MembraneSynth().toDestination();
                 this.hitSynth.volume.value = AUDIO_CONFIG.HIT_VOLUME;
 
-                const melody = [
-                    ["0:0", "E4"], ["0:1", "E4"], ["0:2", "E4"],
-                    ["1:0", "E4"], ["1:1", "E4"], ["1:2", "E4"],
-                    ["2:0", "E4"], ["2:1", "G4"], ["2:2", "C4"], ["2:2.5", "D4"],
-                    ["3:0", "E4"],
-                    ["4:0", "F4"], ["4:1", "F4"], ["4:2", "F4"], ["4:3", "F4"],
-                    ["5:0", "F4"], ["5:1", "E4"], ["5:2", "E4"], ["5:3", "E4"],
-                    ["6:0", "E4"], ["6:1", "D4"], ["6:2", "D4"], ["6:3", "E4"],
-                    ["7:0", "D4"], ["7:2", "G4"]
-                ];
+                Tone.Transport.bpm.value = AUDIO_CONFIG.BPM;
+            }
+
+            selectRandomTrack() {
+                // Stop and dispose of previous track if exists
+                if (this.musicPart) {
+                    this.musicPart.stop();
+                    this.musicPart.dispose();
+                }
+
+                // Select random track
+                const track = MUSIC_TRACKS[Math.floor(Math.random() * MUSIC_TRACKS.length)];
+                console.log(`Now playing: ${track.name}`);
 
                 this.musicPart = new Tone.Part((time, note) => {
                     this.synth.triggerAttackRelease(note, "8n", time);
-                }, melody);
+                }, track.melody);
 
                 this.musicPart.loop = true;
-                this.musicPart.loopEnd = "8m";
-
-                Tone.Transport.bpm.value = AUDIO_CONFIG.BPM;
+                this.musicPart.loopEnd = track.loopEnd;
             }
 
             startGame() {
                 this.initAudio().then(() => {
+                    this.selectRandomTrack();
+                    Tone.Transport.stop();
+                    Tone.Transport.position = 0;
                     Tone.Transport.start();
                     this.musicPart.start(0);
                 });
@@ -522,7 +587,11 @@
                 this.cat.body.setVelocity(0, 0);
                 this.cat.rotation = 0;
 
-                this.spawnEvent.paused = false;
+                // Cancel any existing spawn event and start fresh
+                if (this.spawnEvent) {
+                    this.spawnEvent.remove();
+                }
+                this.scheduleNextObstacle();
                 this.physics.resume();
             }
 
@@ -534,14 +603,26 @@
             spawnObstacle() {
                 if (!this.isGameRunning) return;
 
+                // Random height for variety
+                const obstacleHeight = GAME_CONFIG.OBSTACLE_MIN_HEIGHT +
+                    Math.random() * (GAME_CONFIG.OBSTACLE_MAX_HEIGHT - GAME_CONFIG.OBSTACLE_MIN_HEIGHT);
+
                 const x = this.scale.width;
-                const y = this.scale.height - this.groundHeight - 30;
+                const y = this.scale.height - this.groundHeight - (obstacleHeight / 2);
 
                 const obstacle = this.obstacles.create(x, y, 'candyCane');
                 obstacle.setOrigin(0.5, 0.5);
+
+                // Scale the obstacle based on the random height
+                const scaleY = obstacleHeight / GAME_CONFIG.OBSTACLE_MAX_HEIGHT;
+                obstacle.setScale(1, scaleY);
+
                 obstacle.setVelocityX(-(GAME_CONFIG.OBSTACLE_BASE_SPEED + (this.score * GAME_CONFIG.OBSTACLE_SPEED_INCREMENT)));
                 obstacle.body.allowGravity = false;
                 obstacle.body.setImmovable(true);
+
+                // Update physics body to match scaled size
+                obstacle.body.setSize(GAME_CONFIG.OBSTACLE_WIDTH, obstacleHeight);
             }
 
             hitObstacle(cat, obstacle) {
@@ -549,7 +630,9 @@
 
                 this.isGameRunning = false;
                 this.physics.pause();
-                this.spawnEvent.paused = true;
+                if (this.spawnEvent) {
+                    this.spawnEvent.remove();
+                }
 
                 if (this.audioStarted) {
                     this.hitSynth.triggerAttackRelease("C2", "8n");
