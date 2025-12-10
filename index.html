@@ -1,3 +1,11 @@
+<!--
+    Reindeer Chase - A Festive Endless Runner Game
+    
+    Created by: anirudha-simha
+    GitHub: https://github.com/anirudha-simha/CandyCaneRun
+    
+    © 2024 anirudha-simha. All rights reserved.
+-->
 <!DOCTYPE html>
 <html lang="en">
 
@@ -137,6 +145,23 @@
             transform: translateY(4px);
             box-shadow: 0 0 0 #d45050;
         }
+
+        .attribution {
+            font-size: 0.75rem;
+            color: #999;
+            margin-top: 15px;
+            margin-bottom: 0;
+        }
+
+        .attribution a {
+            color: #888;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .attribution a:hover {
+            color: #FF6B6B;
+        }
     </style>
 </head>
 
@@ -150,6 +175,8 @@
                     <p>Help Noodles catch the reindeer!</p>
                     <p><small>Tap or Space to Jump</small></p>
                     <button id="start-btn">Play Now</button>
+                    <p class="attribution">A game by <a href="https://github.com/anirudha-simha"
+                            target="_blank">anirudha-simha</a></p>
                 </div>
                 <div id="game-over-screen" class="message-box" style="display: none;">
                     <h1>Ouch!</h1>
@@ -175,10 +202,11 @@
         // Game configuration
         const GAME_CONFIG = {
             GROUND_HEIGHT_RATIO: 0.15,
-            OBSTACLE_SPAWN_DELAY_MIN: 800,
+            OBSTACLE_SPAWN_DELAY_MIN: 1500,
             OBSTACLE_SPAWN_DELAY_MAX: 2200,
-            OBSTACLE_BASE_SPEED: 300,
-            OBSTACLE_SPEED_INCREMENT: 10,
+            OBSTACLE_START_SPEED: 150,       // Speed at score 0
+            OBSTACLE_MAX_SPEED: 500,         // Maximum speed cap
+            OBSTACLE_SPEED_PER_POINT: 15,    // Speed increase per point scored
             OBSTACLE_MIN_HEIGHT: 40,
             OBSTACLE_MAX_HEIGHT: 90,
             OBSTACLE_WIDTH: 20
@@ -383,6 +411,7 @@
                 this.cat.body.setGravityY(PLAYER_CONFIG.GRAVITY);
                 this.cat.body.setSize(PLAYER_CONFIG.SIZE, PLAYER_CONFIG.SIZE);
                 this.cat.body.setOffset(PLAYER_CONFIG.OFFSET, PLAYER_CONFIG.OFFSET);
+                this.cat.isGrounded = false;  // Start in air so gravity pulls cat down
             }
 
             createReindeer() {
@@ -614,6 +643,7 @@
                 this.cat.y = 0;
                 this.cat.body.setVelocity(0, 0);
                 this.cat.rotation = 0;
+                this.cat.isGrounded = false;  // Allow gravity to pull cat down
 
                 // Cancel any existing spawn event and start fresh
                 if (this.spawnEvent) {
@@ -645,12 +675,20 @@
                 const scaleY = obstacleHeight / GAME_CONFIG.OBSTACLE_MAX_HEIGHT;
                 obstacle.setScale(1, scaleY);
 
-                obstacle.setVelocityX(-(GAME_CONFIG.OBSTACLE_BASE_SPEED + (this.score * GAME_CONFIG.OBSTACLE_SPEED_INCREMENT)));
+                // Set velocity using current calculated speed
+                obstacle.setVelocityX(-this.getCurrentSpeed());
                 obstacle.body.allowGravity = false;
                 obstacle.body.setImmovable(true);
 
                 // Update physics body to match scaled size
                 obstacle.body.setSize(GAME_CONFIG.OBSTACLE_WIDTH, obstacleHeight);
+            }
+
+            getCurrentSpeed() {
+                // Simple score-based speed: starts slow, increases per point, caps at max
+                const speed = GAME_CONFIG.OBSTACLE_START_SPEED +
+                    (this.score * GAME_CONFIG.OBSTACLE_SPEED_PER_POINT);
+                return Math.min(speed, GAME_CONFIG.OBSTACLE_MAX_SPEED);
             }
 
             hitObstacle(cat, obstacle) {
@@ -731,11 +769,20 @@
                 this.mountainOffset += MOUNTAIN_CONFIG.SCROLL_SPEED;
                 this.drawHills();
 
+                // Sync all obstacles to current speed so they maintain consistent spacing
+                const currentSpeed = this.getCurrentSpeed();
+
                 this.obstacles.children.iterate((obstacle) => {
-                    if (obstacle && obstacle.x < -50) {
-                        obstacle.destroy();
-                        this.score++;
-                        this.scoreText.setText('Score: ' + this.score);
+                    if (obstacle) {
+                        // Update velocity to current speed
+                        obstacle.setVelocityX(-currentSpeed);
+
+                        // Check if off screen and score
+                        if (obstacle.x < -50) {
+                            obstacle.destroy();
+                            this.score++;
+                            this.scoreText.setText('Score: ' + this.score);
+                        }
                     }
                 });
             }
