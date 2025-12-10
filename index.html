@@ -61,6 +61,28 @@
             align-items: center;
         }
 
+        /* Game wrapper maintains aspect ratio and max size on desktop */
+        #game-wrapper {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        /* Desktop: constrain size and center */
+        @media (min-width: 769px) {
+            #game-wrapper {
+                max-width: 1200px;
+                max-height: 675px;
+                /* 16:9 aspect ratio */
+                aspect-ratio: 16 / 9;
+                width: 100%;
+                height: auto;
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            }
+        }
+
         #ui-layer {
             position: absolute;
             top: 0;
@@ -120,21 +142,23 @@
 
 <body>
 
-    <div id="ui-layer">
-        <div id="start-screen" class="message-box">
-            <h1>Reindeer Chase</h1>
-            <p>Help Noodles catch the reindeer!</p>
-            <p><small>Tap or Space to Jump</small></p>
-            <button id="start-btn">Play Now</button>
-        </div>
-        <div id="game-over-screen" class="message-box" style="display: none;">
-            <h1>Ouch!</h1>
-            <p>Score: <span id="final-score">0</span></p>
-            <button id="restart-btn">Try Again</button>
+    <div id="game-container">
+        <div id="game-wrapper">
+            <div id="ui-layer">
+                <div id="start-screen" class="message-box">
+                    <h1>Reindeer Chase</h1>
+                    <p>Help Noodles catch the reindeer!</p>
+                    <p><small>Tap or Space to Jump</small></p>
+                    <button id="start-btn">Play Now</button>
+                </div>
+                <div id="game-over-screen" class="message-box" style="display: none;">
+                    <h1>Ouch!</h1>
+                    <p>Score: <span id="final-score">0</span></p>
+                    <button id="restart-btn">Try Again</button>
+                </div>
+            </div>
         </div>
     </div>
-
-    <div id="game-container"></div>
 
     <script>
         // ===== CONFIGURATION CONSTANTS =====
@@ -228,10 +252,11 @@
 
         // UI configuration
         const UI_CONFIG = {
+            SAFE_AREA_MARGIN: 50,  // Extra margin for notched phones
             MOON_RADIUS: 40,
             MOON_ALPHA: 0.9,
-            MOON_OFFSET_X: 100,
-            MOON_OFFSET_Y: 80,
+            MOON_OFFSET_X: 80,
+            MOON_OFFSET_Y: 60,
             REINDEER_FONT_SIZE: '60px',
             REINDEER_OFFSET_X: 100,
             REINDEER_OFFSET_Y: 200,
@@ -285,9 +310,10 @@
             }
 
             createMoon() {
+                const safeMargin = UI_CONFIG.SAFE_AREA_MARGIN;
                 this.moon = this.add.circle(
-                    this.scale.width - UI_CONFIG.MOON_OFFSET_X,
-                    UI_CONFIG.MOON_OFFSET_Y,
+                    this.scale.width - UI_CONFIG.MOON_OFFSET_X - safeMargin,
+                    UI_CONFIG.MOON_OFFSET_Y + safeMargin,
                     UI_CONFIG.MOON_RADIUS,
                     COLORS.MOON,
                     UI_CONFIG.MOON_ALPHA
@@ -360,8 +386,9 @@
             }
 
             createReindeer() {
+                const safeMargin = UI_CONFIG.SAFE_AREA_MARGIN;
                 this.reindeer = this.add.text(
-                    this.scale.width - UI_CONFIG.REINDEER_OFFSET_X,
+                    this.scale.width - UI_CONFIG.REINDEER_OFFSET_X - safeMargin,
                     this.scale.height - this.groundHeight - UI_CONFIG.REINDEER_OFFSET_Y,
                     "🦌",
                     { fontSize: UI_CONFIG.REINDEER_FONT_SIZE }
@@ -427,9 +454,10 @@
             }
 
             createUI() {
+                const safeMargin = UI_CONFIG.SAFE_AREA_MARGIN;
                 this.scoreText = this.add.text(
-                    UI_CONFIG.SCORE_OFFSET_X,
-                    UI_CONFIG.SCORE_OFFSET_Y,
+                    UI_CONFIG.SCORE_OFFSET_X + safeMargin,
+                    UI_CONFIG.SCORE_OFFSET_Y + safeMargin,
                     'Score: 0',
                     {
                         fontSize: UI_CONFIG.SCORE_FONT_SIZE,
@@ -683,10 +711,10 @@
                     this.cat.y = height - this.groundHeight - 50;
                 }
 
-                this.reindeer.x = width - UI_CONFIG.REINDEER_OFFSET_X;
+                this.reindeer.x = width - UI_CONFIG.REINDEER_OFFSET_X - UI_CONFIG.SAFE_AREA_MARGIN;
                 this.reindeer.y = height - this.groundHeight - UI_CONFIG.REINDEER_OFFSET_Y;
 
-                this.moon.x = width - UI_CONFIG.MOON_OFFSET_X;
+                this.moon.x = width - UI_CONFIG.MOON_OFFSET_X - UI_CONFIG.SAFE_AREA_MARGIN;
 
                 this.generateMountainPeaks();
                 this.drawHills();
@@ -715,15 +743,19 @@
 
         // ===== GAME INITIALIZATION =====
 
+        // Get wrapper element for sizing
+        const gameWrapper = document.getElementById('game-wrapper');
+
         const config = {
             type: Phaser.AUTO,
-            parent: 'game-container',
-            width: window.innerWidth,
-            height: window.innerHeight,
+            parent: 'game-wrapper',
+            width: gameWrapper.clientWidth || window.innerWidth,
+            height: gameWrapper.clientHeight || window.innerHeight,
             backgroundColor: '#1A2E44',
             scale: {
                 mode: Phaser.Scale.RESIZE,
-                autoCenter: Phaser.Scale.CENTER_BOTH
+                autoCenter: Phaser.Scale.CENTER_BOTH,
+                parent: 'game-wrapper'
             },
             physics: {
                 default: 'arcade',
