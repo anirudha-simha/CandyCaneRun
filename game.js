@@ -153,9 +153,15 @@ class BackgroundScene extends Phaser.Scene {
         );
         this.moon.setDepth(1);
 
-        // Add a slight glow effect
+        // Add a slight glow effect (may not be supported on all devices/browsers)
         // color, outerStrength, innerStrength, knockout
-        this.moon.postFX.addGlow(COLORS.MOON, 1.5, 0, false);
+        try {
+            if (this.moon.postFX) {
+                this.moon.postFX.addGlow(COLORS.MOON, 1.5, 0, false);
+            }
+        } catch (e) {
+            console.log('Glow effect not supported on this device');
+        }
     }
 
     createMountains() {
