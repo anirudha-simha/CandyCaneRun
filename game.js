@@ -496,6 +496,7 @@ class GameScene extends Phaser.Scene {
     create() {
         this.score = 0;
         this.audioStarted = false;
+        this.isGameOver = false;
         this.groundHeight = this.scale.height * GAME_CONFIG.GROUND_HEIGHT_RATIO;
 
         this.createObstacleTexture();
@@ -535,13 +536,13 @@ class GameScene extends Phaser.Scene {
         this.cat = this.add.text(100, groundY, "🐈‍⬛", { fontSize: PLAYER_CONFIG.FONT_SIZE });
         this.cat.setOrigin(0.5, 0.5);
         this.cat.setFlipX(true);
+        this.cat.setTint(0x444444);
 
         this.physics.add.existing(this.cat);
         this.cat.body.setCollideWorldBounds(true);
         this.cat.body.setGravityY(PLAYER_CONFIG.GRAVITY);
         this.cat.body.setSize(PLAYER_CONFIG.SIZE, PLAYER_CONFIG.SIZE);
         this.cat.body.setOffset(PLAYER_CONFIG.OFFSET, PLAYER_CONFIG.OFFSET);
-        // Removing isGrounded property - we will use body.touching.down
     }
 
     createObstacleSystem() {
@@ -675,13 +676,21 @@ class GameScene extends Phaser.Scene {
     }
 
     hitObstacle() {
-        // Disable collider immediately to prevent multiple callbacks (Phaser-native debouncing)
+        // Prevent multiple triggers with game over flag
+        if (this.isGameOver) return;
+        this.isGameOver = true;
+
+        // Disable collider immediately
         if (this.obstacleCollider) {
             this.obstacleCollider.destroy();
         }
 
-        // Stop game
-        if (this.spawnEvent) this.spawnEvent.remove();
+        // Stop spawning
+        if (this.spawnEvent) {
+            this.spawnEvent.remove();
+        }
+
+        // Stop physics
         this.physics.pause();
 
         // Stop music
@@ -691,8 +700,11 @@ class GameScene extends Phaser.Scene {
             if (this.musicPart) this.musicPart.stop();
         }
 
-        // Transition to game over scene with score
-        this.scene.start('GameOverScene', { score: this.score });
+        // Delayed transition for reliability
+        const finalScore = this.score;
+        this.time.delayedCall(100, () => {
+            this.scene.start('GameOverScene', { score: finalScore });
+        });
     }
 
     jump() {
