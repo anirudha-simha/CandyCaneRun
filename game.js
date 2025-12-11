@@ -432,7 +432,13 @@ class MenuScene extends Phaser.Scene {
         });
     }
 
-    startGame() {
+    async startGame() {
+        // Start audio on button click (user gesture required for mobile)
+        try {
+            await Tone.start();
+        } catch (e) {
+            console.log('Audio context failed to start:', e);
+        }
         this.scene.start('GameScene');
     }
 }
@@ -475,7 +481,13 @@ class GameOverScene extends Phaser.Scene {
         this.input.keyboard.once('keydown-SPACE', () => this.restartGame());
     }
 
-    restartGame() {
+    async restartGame() {
+        // Resume audio context on restart (user gesture)
+        try {
+            await Tone.start();
+        } catch (e) {
+            console.log('Audio context failed to start:', e);
+        }
         this.scene.start('GameScene');
     }
 }
@@ -501,7 +513,7 @@ class GameScene extends Phaser.Scene {
         this.createInput();
         this.createUI();
 
-        // Start audio
+        // Create synths and start music
         this.initAudio();
 
         // Schedule first obstacle
