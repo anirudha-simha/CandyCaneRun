@@ -574,7 +574,8 @@ class GameScene extends Phaser.Scene {
             this.cat.rotation = 0;
         });
 
-        this.physics.add.overlap(this.cat, this.obstacles, this.hitObstacle, null, this);
+        // Store collider reference so we can disable it on game over
+        this.obstacleCollider = this.physics.add.overlap(this.cat, this.obstacles, this.hitObstacle, null, this);
     }
 
     createInput() {
@@ -668,6 +669,11 @@ class GameScene extends Phaser.Scene {
     }
 
     hitObstacle() {
+        // Disable collider immediately to prevent multiple callbacks (Phaser-native debouncing)
+        if (this.obstacleCollider) {
+            this.obstacleCollider.destroy();
+        }
+
         // Stop game
         if (this.spawnEvent) this.spawnEvent.remove();
         this.physics.pause();
