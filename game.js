@@ -44,8 +44,8 @@ const PLAYER_CONFIG = {
 
 const MOUNTAIN_CONFIG = {
     NUM_PEAKS: 15,
-    PEAK_SPACING: 400,
-    PEAK_SPACING_VARIANCE: 150,
+    PEAK_SPACING: -150, // Negative for overlapping seamless hills
+    PEAK_SPACING_VARIANCE: 100,
     MIN_WIDTH: 400,
     MAX_WIDTH: 800,
     HEIGHT_RATIO: 0.6,
@@ -171,20 +171,26 @@ class BackgroundScene extends Phaser.Scene {
         this.mountainPixelsPerUnit = 1; // logical width
         this.mountainPeaks = [];
 
+        // Track the rightmost edge for seamless recycling
+        this.lastPeakEndX = -MOUNTAIN_CONFIG.BUFFER_DISTANCE;
+
         const width = this.scale.width;
         // Calculate how many peaks we need to cover the screen + buffer
-        // Assuming average width is (MIN + MAX) / 2
+        // Account for overlap (negative spacing) by using effective spacing
         const avgWidth = (MOUNTAIN_CONFIG.MIN_WIDTH + MOUNTAIN_CONFIG.MAX_WIDTH) / 2;
+        const effectiveSpacing = Math.max(avgWidth + MOUNTAIN_CONFIG.PEAK_SPACING, avgWidth * 0.5);
         const totalWidthNeeded = width + MOUNTAIN_CONFIG.BUFFER_DISTANCE * 2;
-        const count = Math.ceil(totalWidthNeeded / (avgWidth + MOUNTAIN_CONFIG.PEAK_SPACING)) + 2;
-
-        let currentX = -MOUNTAIN_CONFIG.BUFFER_DISTANCE;
+        const count = Math.ceil(totalWidthNeeded / effectiveSpacing) + 3;
 
         for (let i = 0; i < count; i++) {
             const peak = this.add.graphics();
             peak.setDepth(2); // Ensure mountains are above moon/bg but below ground/snow
             this.mountainPeaks.push(peak);
-            currentX = this.recyclePeak(peak, currentX);
+
+            // Place each peak starting at the last peak's end + spacing
+            const spacing = MOUNTAIN_CONFIG.PEAK_SPACING + Math.random() * MOUNTAIN_CONFIG.PEAK_SPACING_VARIANCE;
+            this.recyclePeak(peak, this.lastPeakEndX + spacing);
+            this.lastPeakEndX = peak.x + peak.peakWidth;
         }
     }
 
@@ -311,35 +317,23 @@ class BackgroundScene extends Phaser.Scene {
     update() {
         const buffer = MOUNTAIN_CONFIG.BUFFER_DISTANCE;
 
-        // Find the right-most peak to append after
-        let rightMostPeak = null;
-        let rightMostX = -Infinity;
-        this.mountainPeaks.forEach(peak => {
-            if (peak.x > rightMostX) {
-                rightMostX = peak.x;
-                rightMostPeak = peak;
-            }
-        });
-
+        // 1. Move all peaks and update the lastPeakEndX tracker
         this.mountainPeaks.forEach(peak => {
             peak.x -= MOUNTAIN_CONFIG.SCROLL_SPEED;
+        });
+        this.lastPeakEndX -= MOUNTAIN_CONFIG.SCROLL_SPEED;
 
-            // If peak is completely off screen to the left
+        // 2. Recycle peaks that are off-screen LEFT by placing them at the RIGHT
+        this.mountainPeaks.forEach(peak => {
             if (peak.x + peak.peakWidth < -buffer) {
-                // Recycle it! Place it after the right-most peak
-                // We use the rightMostPeak's END position (x + width) plus spacing
-                const spacing = MOUNTAIN_CONFIG.PEAK_SPACING + Math.random() * MOUNTAIN_CONFIG.PEAK_SPACING_VARIANCE;
+                // Calculate new position: end of last placed peak + spacing
+                const spacing = MOUNTAIN_CONFIG.PEAK_SPACING +
+                    Math.random() * MOUNTAIN_CONFIG.PEAK_SPACING_VARIANCE;
 
-                // If rightMostPeak is the one we are currently moving (unlikely but possible if only 1 peak), fallback
-                let anchorX = rightMostPeak ? (rightMostPeak.x + rightMostPeak.peakWidth) : (this.scale.width + buffer);
+                this.recyclePeak(peak, this.lastPeakEndX + spacing);
 
-                // Update this peak
-                this.recyclePeak(peak, anchorX + spacing);
-
-                // Update rightMostPeak tracking for next iteration in same frame
-                rightMostPeak = peak;
-                // Note: we can't easily update rightMostX accurately without recalculating width, 
-                // but we updated the peak physically so next iteration will find it if needed.
+                // Update the "rightmost edge" tracker
+                this.lastPeakEndX = peak.x + peak.peakWidth;
             }
         });
     }
