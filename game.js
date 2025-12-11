@@ -152,6 +152,10 @@ class BackgroundScene extends Phaser.Scene {
             UI_CONFIG.MOON_ALPHA
         );
         this.moon.setDepth(1);
+
+        // Add a slight glow effect
+        // color, outerStrength, innerStrength, knockout
+        this.moon.postFX.addGlow(COLORS.MOON, 1.5, 0, false);
     }
 
     createMountains() {
