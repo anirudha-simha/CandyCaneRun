@@ -16,9 +16,7 @@ const COLORS = {
     MOUNTAIN: 0x2C4A6B,
     MOON: 0xFFF8DC,
     UI_BG: 0xFFFFFF,
-    UI_TEXT: 0x333333,
-    UI_BUTTON: 0xFF6B6B,
-    UI_BUTTON_SHADOW: 0xD45050
+    UI_BUTTON: 0xFF6B6B
 };
 
 const GAME_CONFIG = {
@@ -43,7 +41,6 @@ const PLAYER_CONFIG = {
 };
 
 const MOUNTAIN_CONFIG = {
-    NUM_PEAKS: 15,
     PEAK_SPACING: -150, // Negative for overlapping seamless hills
     PEAK_SPACING_VARIANCE: 100,
     MIN_WIDTH: 400,
@@ -211,10 +208,7 @@ class BackgroundScene extends Phaser.Scene {
     }
 
     createMountains() {
-        // Create a container or group for mountain peaks
-        // We will create enough peaks to cover the screen width + buffer
-        // Each peak is a separate Graphics object
-        this.mountainPixelsPerUnit = 1; // logical width
+        // Pre-create exactly enough peaks to cover screen width + buffer for seamless recycling
         this.mountainPeaks = [];
 
         // Track the rightmost edge for seamless recycling
@@ -592,8 +586,8 @@ class GameScene extends Phaser.Scene {
     }
 
     createInput() {
-        this.input.on('pointerdown', this.handleInput, this);
-        this.input.keyboard.on('keydown-SPACE', this.handleInput, this);
+        this.input.on('pointerdown', this.jump, this);
+        this.input.keyboard.on('keydown-SPACE', this.jump, this);
     }
 
     createUI() {
@@ -655,9 +649,7 @@ class GameScene extends Phaser.Scene {
         }
     }
 
-    handleInput() {
-        this.jump();
-    }
+
 
     spawnObstacle() {
         const obstacleHeight = GAME_CONFIG.OBSTACLE_MIN_HEIGHT +
