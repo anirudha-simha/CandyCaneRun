@@ -226,6 +226,7 @@ class GameScene extends Phaser.Scene {
         this.cat = this.add.text(50, groundY, "🐈‍⬛", { fontSize: PLAYER_CONFIG.FONT_SIZE });
         this.cat.setOrigin(0.5, 0.5);
         this.cat.setFlipX(true);
+        this.cat.setTint(0x444444);
 
         this.physics.add.existing(this.cat);
         this.cat.body.setCollideWorldBounds(true);
