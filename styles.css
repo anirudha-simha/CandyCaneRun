@@ -85,6 +85,14 @@ body {
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
     pointer-events: auto;
     max-width: 80%;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Ensure game over screen is always visible when displayed */
+#game-over-screen {
+    position: relative;
+    z-index: 101;
 }
 
 .message-box h1 {

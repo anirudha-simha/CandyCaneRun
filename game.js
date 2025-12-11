@@ -221,7 +221,9 @@ class GameScene extends Phaser.Scene {
     }
 
     createPlayer() {
-        this.cat = this.add.text(50, 0, "🐈‍⬛", { fontSize: PLAYER_CONFIG.FONT_SIZE });
+        // Start cat on the ground, not at y=0
+        const groundY = this.scale.height - this.groundHeight - 25;
+        this.cat = this.add.text(50, groundY, "🐈‍⬛", { fontSize: PLAYER_CONFIG.FONT_SIZE });
         this.cat.setOrigin(0.5, 0.5);
         this.cat.setFlipX(true);
 
@@ -230,7 +232,7 @@ class GameScene extends Phaser.Scene {
         this.cat.body.setGravityY(PLAYER_CONFIG.GRAVITY);
         this.cat.body.setSize(PLAYER_CONFIG.SIZE, PLAYER_CONFIG.SIZE);
         this.cat.body.setOffset(PLAYER_CONFIG.OFFSET, PLAYER_CONFIG.OFFSET);
-        this.cat.isGrounded = false;  // Start in air so gravity pulls cat down
+        this.cat.isGrounded = true;  // Start on the ground
     }
 
     createReindeer() {
@@ -459,10 +461,11 @@ class GameScene extends Phaser.Scene {
         document.getElementById('game-over-screen').style.display = 'none';
 
         this.obstacles.clear(true, true);
-        this.cat.y = 0;
+        // Reset cat to ground position
+        this.cat.y = this.scale.height - this.groundHeight - 25;
         this.cat.body.setVelocity(0, 0);
         this.cat.rotation = 0;
-        this.cat.isGrounded = false;  // Allow gravity to pull cat down
+        this.cat.isGrounded = true;  // Start on the ground, ready to jump
 
         // Cancel any existing spawn event and start fresh
         if (this.spawnEvent) {
@@ -525,8 +528,11 @@ class GameScene extends Phaser.Scene {
             this.musicPart.stop();
         }
 
+        // Update score and show game over screen with slight delay for reliability
         document.getElementById('final-score').textContent = this.score;
-        document.getElementById('game-over-screen').style.display = 'block';
+        const gameOverScreen = document.getElementById('game-over-screen');
+        gameOverScreen.style.display = 'flex';
+        gameOverScreen.style.flexDirection = 'column';
     }
 
     jump() {
@@ -637,4 +643,13 @@ const game = new Phaser.Game(config);
 
 window.addEventListener('focus', () => {
     if (game) game.step();
+});
+
+// Reload page on orientation change (mobile)
+let initialOrientation = window.innerWidth > window.innerHeight ? 'landscape' : 'portrait';
+window.addEventListener('resize', () => {
+    const currentOrientation = window.innerWidth > window.innerHeight ? 'landscape' : 'portrait';
+    if (currentOrientation !== initialOrientation) {
+        location.reload();
+    }
 });
