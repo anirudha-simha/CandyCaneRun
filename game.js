@@ -110,6 +110,52 @@ const UI_CONFIG = {
     SCORE_OFFSET_Y: 20
 };
 
+// ===== UI HELPERS =====
+// Shared utilities for creating consistent UI elements
+
+const UIHelpers = {
+    /**
+     * Creates a styled button with hover effects
+     */
+    createButton(scene, x, y, text, callback) {
+        const btn = scene.add.rectangle(x, y, 150, 50, COLORS.UI_BUTTON);
+        btn.setInteractive({ useHandCursor: true });
+
+        const btnText = scene.add.text(x, y, text, {
+            fontSize: '20px',
+            color: '#fff',
+            fontFamily: 'Segoe UI, sans-serif',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+
+        btn.on('pointerover', () => btn.setFillStyle(0xFF8888));
+        btn.on('pointerout', () => btn.setFillStyle(COLORS.UI_BUTTON));
+        btn.on('pointerdown', callback);
+
+        return { btn, btnText };
+    },
+
+    /**
+     * Creates a semi-transparent UI panel
+     */
+    createPanel(scene, x, y, width, height) {
+        const panel = scene.add.rectangle(x, y, width, height, COLORS.UI_BG, 0.95);
+        return panel;
+    },
+
+    /**
+     * Creates styled text with default font family
+     */
+    createText(scene, x, y, text, options = {}) {
+        const defaults = {
+            fontSize: '16px',
+            color: '#666',
+            fontFamily: 'Segoe UI, sans-serif'
+        };
+        return scene.add.text(x, y, text, { ...defaults, ...options }).setOrigin(0.5);
+    }
+};
+
 // ===== BACKGROUND SCENE =====
 // Runs continuously behind all other scenes
 // Contains: moon, mountains, snow, ground, reindeer
@@ -352,66 +398,40 @@ class MenuScene extends Phaser.Scene {
         const centerY = this.scale.height / 2;
 
         // Semi-transparent panel
-        const panel = this.add.rectangle(centerX, centerY, 350, 280, COLORS.UI_BG, 0.95);
-        panel.setStrokeStyle(0);
+        UIHelpers.createPanel(this, centerX, centerY, 350, 280);
 
         // Title
-        this.add.text(centerX, centerY - 80, '🎄 Reindeer Chase 🎄', {
+        UIHelpers.createText(this, centerX, centerY - 80, '🎄 Reindeer Chase 🎄', {
             fontSize: '28px',
             color: '#333',
-            fontFamily: 'Segoe UI, sans-serif',
             fontStyle: 'bold'
-        }).setOrigin(0.5);
+        });
 
         // Subtitle
-        this.add.text(centerX, centerY - 35, 'Help Noodles catch the reindeer!', {
-            fontSize: '16px',
-            color: '#666',
-            fontFamily: 'Segoe UI, sans-serif'
-        }).setOrigin(0.5);
+        UIHelpers.createText(this, centerX, centerY - 35, 'Help Noodles catch the reindeer!');
 
         // Instructions
-        this.add.text(centerX, centerY, 'Tap or Space to Jump', {
+        UIHelpers.createText(this, centerX, centerY, 'Tap or Space to Jump', {
             fontSize: '14px',
-            color: '#888',
-            fontFamily: 'Segoe UI, sans-serif'
-        }).setOrigin(0.5);
+            color: '#888'
+        });
 
         // Play button
-        const btnY = centerY + 50;
-        const btn = this.add.rectangle(centerX, btnY, 150, 50, COLORS.UI_BUTTON);
-        btn.setInteractive({ useHandCursor: true });
-
-        const btnText = this.add.text(centerX, btnY, 'Play Now', {
-            fontSize: '20px',
-            color: '#fff',
-            fontFamily: 'Segoe UI, sans-serif',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-
-        // Button hover effects
-        btn.on('pointerover', () => btn.setFillStyle(0xFF8888));
-        btn.on('pointerout', () => btn.setFillStyle(COLORS.UI_BUTTON));
-        btn.on('pointerdown', () => this.startGame());
+        const { btn } = UIHelpers.createButton(this, centerX, centerY + 50, 'Play Now', () => this.startGame());
 
         // Attribution (clickable link to GitHub)
-        const attribution = this.add.text(centerX, centerY + 110, 'A game by anirudha-simha', {
+        const attribution = UIHelpers.createText(this, centerX, centerY + 110, 'A game by anirudha-simha', {
             fontSize: '12px',
-            color: '#888',
-            fontFamily: 'Segoe UI, sans-serif'
-        }).setOrigin(0.5);
-
+            color: '#888'
+        });
         attribution.setInteractive({ useHandCursor: true });
         attribution.on('pointerover', () => attribution.setColor('#FF6B6B'));
         attribution.on('pointerout', () => attribution.setColor('#888'));
-        attribution.on('pointerdown', () => {
-            window.open('https://github.com/anirudha-simha', '_blank');
-        });
+        attribution.on('pointerdown', () => window.open('https://github.com/anirudha-simha', '_blank'));
 
         // Also allow space/tap to start
         this.input.keyboard.once('keydown-SPACE', () => this.startGame());
         this.input.once('pointerdown', (pointer) => {
-            // Only if not clicking the button
             if (!btn.getBounds().contains(pointer.x, pointer.y)) {
                 this.startGame();
             }
@@ -431,46 +451,33 @@ class GameOverScene extends Phaser.Scene {
         super({ key: 'GameOverScene' });
     }
 
+    init(data) {
+        this.finalScore = data?.score || 0;
+    }
+
     create() {
         const centerX = this.scale.width / 2;
         const centerY = this.scale.height / 2;
-        const score = this.scene.settings.data?.score || 0;
 
         // Semi-transparent panel
-        const panel = this.add.rectangle(centerX, centerY, 300, 220, COLORS.UI_BG, 0.95);
+        UIHelpers.createPanel(this, centerX, centerY, 300, 220);
 
         // Title
-        this.add.text(centerX, centerY - 60, 'Ouch!', {
+        UIHelpers.createText(this, centerX, centerY - 60, 'Ouch!', {
             fontSize: '36px',
             color: '#333',
-            fontFamily: 'Segoe UI, sans-serif',
             fontStyle: 'bold'
-        }).setOrigin(0.5);
+        });
 
         // Score
-        this.add.text(centerX, centerY - 10, `Score: ${score}`, {
-            fontSize: '24px',
-            color: '#666',
-            fontFamily: 'Segoe UI, sans-serif'
-        }).setOrigin(0.5);
+        UIHelpers.createText(this, centerX, centerY - 10, `Score: ${this.finalScore}`, {
+            fontSize: '24px'
+        });
 
         // Try Again button
-        const btnY = centerY + 50;
-        const btn = this.add.rectangle(centerX, btnY, 150, 50, COLORS.UI_BUTTON);
-        btn.setInteractive({ useHandCursor: true });
+        UIHelpers.createButton(this, centerX, centerY + 50, 'Try Again', () => this.restartGame());
 
-        this.add.text(centerX, btnY, 'Try Again', {
-            fontSize: '20px',
-            color: '#fff',
-            fontFamily: 'Segoe UI, sans-serif',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-
-        btn.on('pointerover', () => btn.setFillStyle(0xFF8888));
-        btn.on('pointerout', () => btn.setFillStyle(COLORS.UI_BUTTON));
-        btn.on('pointerdown', () => this.restartGame());
-
-        // Also allow space/tap to restart
+        // Also allow space to restart
         this.input.keyboard.once('keydown-SPACE', () => this.restartGame());
     }
 
@@ -540,7 +547,12 @@ class GameScene extends Phaser.Scene {
     }
 
     createObstacleSystem() {
-        this.obstacles = this.physics.add.group();
+        // Object pooling: pre-allocate obstacle group with max size
+        this.obstacles = this.physics.add.group({
+            classType: Phaser.Physics.Arcade.Sprite,
+            maxSize: 10,
+            runChildUpdate: false
+        });
         this.spawnEvent = null;
     }
 
@@ -651,11 +663,17 @@ class GameScene extends Phaser.Scene {
         const obstacleHeight = GAME_CONFIG.OBSTACLE_MIN_HEIGHT +
             Math.random() * (GAME_CONFIG.OBSTACLE_MAX_HEIGHT - GAME_CONFIG.OBSTACLE_MIN_HEIGHT);
 
-        const x = this.scale.width;
+        const x = this.scale.width + 50; // Spawn just off-screen right
         const y = this.scale.height - this.groundHeight - (obstacleHeight / 2);
 
-        const obstacle = this.obstacles.create(x, y, 'candyCane');
+        // Get from pool (reuse) or create new if pool not full
+        const obstacle = this.obstacles.get(x, y, 'candyCane');
+        if (!obstacle) return; // Pool exhausted
+
+        obstacle.setActive(true).setVisible(true);
+        obstacle.setPosition(x, y);
         obstacle.setOrigin(0.5, 0.5);
+
         const scaleY = obstacleHeight / GAME_CONFIG.OBSTACLE_MAX_HEIGHT;
         obstacle.setScale(1, scaleY);
         obstacle.setVelocityX(-this.getCurrentSpeed());
@@ -733,13 +751,14 @@ class GameScene extends Phaser.Scene {
     }
 
     update() {
-        // Sync all obstacles to current speed
+        // Update velocity and recycle obstacles that have left the screen
         const currentSpeed = this.getCurrentSpeed();
-        this.obstacles.children.iterate((obstacle) => {
-            if (obstacle) {
+        this.obstacles.getChildren().forEach(obstacle => {
+            if (obstacle.active) {
                 obstacle.setVelocityX(-currentSpeed);
+                // Recycle obstacle when it goes off-screen left
                 if (obstacle.x < -50) {
-                    obstacle.destroy();
+                    obstacle.setActive(false).setVisible(false);
                     this.score++;
                     this.scoreText.setText('Score: ' + this.score);
                 }
@@ -787,13 +806,4 @@ const game = new Phaser.Game(config);
 game.events.once('ready', () => {
     game.scene.start('BackgroundScene');
     game.scene.start('MenuScene');
-});
-
-// Reload on orientation change
-let initialOrientation = window.innerWidth > window.innerHeight ? 'landscape' : 'portrait';
-window.addEventListener('resize', () => {
-    const currentOrientation = window.innerWidth > window.innerHeight ? 'landscape' : 'portrait';
-    if (currentOrientation !== initialOrientation) {
-        location.reload();
-    }
 });
