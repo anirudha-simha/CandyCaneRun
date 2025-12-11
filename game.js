@@ -120,7 +120,6 @@ class BackgroundScene extends Phaser.Scene {
     }
 
     create() {
-        this.mountainOffset = 0;
         this.groundHeight = this.scale.height * GAME_CONFIG.GROUND_HEIGHT_RATIO;
 
         this.createBackground();
@@ -152,75 +151,72 @@ class BackgroundScene extends Phaser.Scene {
             COLORS.MOON,
             UI_CONFIG.MOON_ALPHA
         );
+        this.moon.setDepth(1);
     }
 
     createMountains() {
-        this.hillsGraphics = this.add.graphics();
-        this.generateMountainPeaks();
-        this.drawHills();
-    }
-
-    generateMountainPeaks() {
-        const height = this.scale.height;
-        const maxMountainHeight = height * MOUNTAIN_CONFIG.HEIGHT_RATIO;
-        const buffer = MOUNTAIN_CONFIG.BUFFER_DISTANCE;
+        // Create a container or group for mountain peaks
+        // We will create enough peaks to cover the screen width + buffer
+        // Each peak is a separate Graphics object
+        this.mountainPixelsPerUnit = 1; // logical width
         this.mountainPeaks = [];
-        const startX = -buffer;
 
-        for (let i = 0; i < MOUNTAIN_CONFIG.NUM_PEAKS; i++) {
-            this.mountainPeaks.push({
-                x: startX + i * MOUNTAIN_CONFIG.PEAK_SPACING + Math.random() * MOUNTAIN_CONFIG.PEAK_SPACING_VARIANCE,
-                width: MOUNTAIN_CONFIG.MIN_WIDTH + Math.random() * (MOUNTAIN_CONFIG.MAX_WIDTH - MOUNTAIN_CONFIG.MIN_WIDTH),
-                height: maxMountainHeight * MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT +
-                    Math.random() * maxMountainHeight * (1 - MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT)
-            });
+        const width = this.scale.width;
+        // Calculate how many peaks we need to cover the screen + buffer
+        // Assuming average width is (MIN + MAX) / 2
+        const avgWidth = (MOUNTAIN_CONFIG.MIN_WIDTH + MOUNTAIN_CONFIG.MAX_WIDTH) / 2;
+        const totalWidthNeeded = width + MOUNTAIN_CONFIG.BUFFER_DISTANCE * 2;
+        const count = Math.ceil(totalWidthNeeded / (avgWidth + MOUNTAIN_CONFIG.PEAK_SPACING)) + 2;
+
+        let currentX = -MOUNTAIN_CONFIG.BUFFER_DISTANCE;
+
+        for (let i = 0; i < count; i++) {
+            const peak = this.add.graphics();
+            peak.setDepth(2); // Ensure mountains are above moon/bg but below ground/snow
+            this.mountainPeaks.push(peak);
+            currentX = this.recyclePeak(peak, currentX);
         }
     }
 
-    drawHills() {
-        this.hillsGraphics.clear();
-        const width = this.scale.width;
-        const height = this.scale.height;
-        const groundY = height - this.groundHeight;
-        const maxMountainHeight = height * MOUNTAIN_CONFIG.HEIGHT_RATIO;
-        const buffer = MOUNTAIN_CONFIG.BUFFER_DISTANCE;
+    // Draws a new random peak at specified X and returns the X for the NEXT peak
+    recyclePeak(peak, startX) {
+        peak.clear();
 
-        this.hillsGraphics.fillStyle(COLORS.MOUNTAIN, MOUNTAIN_CONFIG.ALPHA);
-        this.hillsGraphics.beginPath();
-        this.hillsGraphics.moveTo(-buffer, height);
-        this.hillsGraphics.lineTo(-buffer, groundY);
+        const width = MOUNTAIN_CONFIG.MIN_WIDTH + Math.random() * (MOUNTAIN_CONFIG.MAX_WIDTH - MOUNTAIN_CONFIG.MIN_WIDTH);
+        const maxMountainHeight = this.scale.height * MOUNTAIN_CONFIG.HEIGHT_RATIO;
+        const height = maxMountainHeight * MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT +
+            Math.random() * maxMountainHeight * (1 - MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT);
 
-        this.mountainPeaks.forEach((peak) => {
-            const peakX = peak.x - this.mountainOffset;
-            if (peakX + peak.width > -buffer && peakX < width + buffer) {
-                this.hillsGraphics.lineTo(peakX, groundY);
-                for (let x = 0; x <= peak.width; x += 10) {
-                    const progress = x / peak.width;
-                    const y = groundY - Math.sin(progress * Math.PI) * peak.height;
-                    this.hillsGraphics.lineTo(peakX + x, y);
-                }
-                this.hillsGraphics.lineTo(peakX + peak.width, groundY);
-            }
-        });
+        const groundY = this.scale.height - this.groundHeight;
 
-        this.hillsGraphics.lineTo(width + buffer, groundY);
-        this.hillsGraphics.lineTo(width + buffer, height);
-        this.hillsGraphics.lineTo(-buffer, height);
-        this.hillsGraphics.closePath();
-        this.hillsGraphics.fillPath();
+        peak.fillStyle(COLORS.MOUNTAIN, MOUNTAIN_CONFIG.ALPHA);
+        peak.beginPath();
 
-        // Recycle peaks
-        const firstPeak = this.mountainPeaks[0];
-        if (firstPeak.x + firstPeak.width - this.mountainOffset < -buffer) {
-            this.mountainPeaks.shift();
-            const lastPeak = this.mountainPeaks[this.mountainPeaks.length - 1];
-            const maxMH = this.scale.height * MOUNTAIN_CONFIG.HEIGHT_RATIO;
-            this.mountainPeaks.push({
-                x: lastPeak.x + MOUNTAIN_CONFIG.PEAK_SPACING + Math.random() * MOUNTAIN_CONFIG.PEAK_SPACING_VARIANCE,
-                width: MOUNTAIN_CONFIG.MIN_WIDTH + Math.random() * (MOUNTAIN_CONFIG.MAX_WIDTH - MOUNTAIN_CONFIG.MIN_WIDTH),
-                height: maxMH * MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT + Math.random() * maxMH * (1 - MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT)
-            });
+        // Draw the peak relative to (0, 0) of the Graphics object
+        // Then we set the position of the Graphics object to (startX, 0)
+
+        // Start bottom-left
+        peak.moveTo(0, groundY);
+
+        // Go up and across
+        for (let x = 0; x <= width; x += 20) {
+            const progress = x / width;
+            const y = groundY - Math.sin(progress * Math.PI) * height;
+            peak.lineTo(x, y);
         }
+
+        // Bottom-right
+        peak.lineTo(width, groundY);
+        peak.closePath();
+        peak.fillPath();
+
+        // Store metadata for recycling
+        peak.x = startX;
+        peak.y = 0; // We draw relative to groundY, so y is 0
+        peak.peakWidth = width;
+
+        // Return the start X for the next mountain
+        return startX + MOUNTAIN_CONFIG.PEAK_SPACING + Math.random() * MOUNTAIN_CONFIG.PEAK_SPACING_VARIANCE;
     }
 
     createSnow() {
@@ -239,6 +235,7 @@ class BackgroundScene extends Phaser.Scene {
             quantity: SNOW_CONFIG.QUANTITY,
             frequency: SNOW_CONFIG.FREQUENCY
         });
+        this.snowEmitter.setDepth(3);
     }
 
     createGround() {
@@ -247,6 +244,7 @@ class BackgroundScene extends Phaser.Scene {
         this.ground.fillRect(0, this.scale.height - this.groundHeight, this.scale.width, this.groundHeight);
         this.ground.fillStyle(COLORS.GROUND_BORDER, 1);
         this.ground.fillRect(0, this.scale.height - this.groundHeight, this.scale.width, 10);
+        this.ground.setDepth(4);
     }
 
     createReindeer() {
@@ -257,6 +255,7 @@ class BackgroundScene extends Phaser.Scene {
             "🦌",
             { fontSize: UI_CONFIG.REINDEER_FONT_SIZE }
         );
+        this.reindeer.setDepth(5);
         this.reindeer.setOrigin(0.5, 0.5);
         this.reindeer.setFlipX(true);
 
@@ -289,8 +288,9 @@ class BackgroundScene extends Phaser.Scene {
         this.reindeer.x = width - UI_CONFIG.REINDEER_OFFSET_X - UI_CONFIG.SAFE_AREA_MARGIN;
         this.reindeer.y = height - this.groundHeight - UI_CONFIG.REINDEER_OFFSET_Y;
 
-        this.generateMountainPeaks();
-        this.drawHills();
+        // Recreate mountains entirely on resize for simplicity
+        this.mountainPeaks.forEach(peak => peak.destroy());
+        this.createMountains();
 
         this.snowEmitter.setEmitZone({
             type: 'random',
@@ -299,9 +299,39 @@ class BackgroundScene extends Phaser.Scene {
     }
 
     update() {
-        // Scroll mountains continuously
-        this.mountainOffset += MOUNTAIN_CONFIG.SCROLL_SPEED;
-        this.drawHills();
+        const buffer = MOUNTAIN_CONFIG.BUFFER_DISTANCE;
+
+        // Find the right-most peak to append after
+        let rightMostPeak = null;
+        let rightMostX = -Infinity;
+        this.mountainPeaks.forEach(peak => {
+            if (peak.x > rightMostX) {
+                rightMostX = peak.x;
+                rightMostPeak = peak;
+            }
+        });
+
+        this.mountainPeaks.forEach(peak => {
+            peak.x -= MOUNTAIN_CONFIG.SCROLL_SPEED;
+
+            // If peak is completely off screen to the left
+            if (peak.x + peak.peakWidth < -buffer) {
+                // Recycle it! Place it after the right-most peak
+                // We use the rightMostPeak's END position (x + width) plus spacing
+                const spacing = MOUNTAIN_CONFIG.PEAK_SPACING + Math.random() * MOUNTAIN_CONFIG.PEAK_SPACING_VARIANCE;
+
+                // If rightMostPeak is the one we are currently moving (unlikely but possible if only 1 peak), fallback
+                let anchorX = rightMostPeak ? (rightMostPeak.x + rightMostPeak.peakWidth) : (this.scale.width + buffer);
+
+                // Update this peak
+                this.recyclePeak(peak, anchorX + spacing);
+
+                // Update rightMostPeak tracking for next iteration in same frame
+                rightMostPeak = peak;
+                // Note: we can't easily update rightMostX accurately without recalculating width, 
+                // but we updated the peak physically so next iteration will find it if needed.
+            }
+        });
     }
 }
 
@@ -501,7 +531,7 @@ class GameScene extends Phaser.Scene {
         this.cat.body.setGravityY(PLAYER_CONFIG.GRAVITY);
         this.cat.body.setSize(PLAYER_CONFIG.SIZE, PLAYER_CONFIG.SIZE);
         this.cat.body.setOffset(PLAYER_CONFIG.OFFSET, PLAYER_CONFIG.OFFSET);
-        this.cat.isGrounded = true;
+        // Removing isGrounded property - we will use body.touching.down
     }
 
     createObstacleSystem() {
@@ -536,7 +566,7 @@ class GameScene extends Phaser.Scene {
         this.physics.add.existing(this.physicsFloor, true);
 
         this.physics.add.collider(this.cat, this.physicsFloor, () => {
-            this.cat.isGrounded = true;
+            // Collision callback no longer needed for state, can be used for FX if needed
             this.cat.rotation = 0;
         });
 
@@ -650,9 +680,8 @@ class GameScene extends Phaser.Scene {
     }
 
     jump() {
-        if (this.cat.isGrounded) {
+        if (this.cat.body.touching.down) {
             this.cat.body.setVelocityY(PLAYER_CONFIG.JUMP_VELOCITY);
-            this.cat.isGrounded = false;
 
             if (this.audioStarted) {
                 this.jumpSynth.triggerAttackRelease("C5", "16n");
