@@ -4,7 +4,7 @@
  * Created by: anirudha-simha
  * GitHub: https://github.com/anirudha-simha/CandyCaneRun
  * 
- * © 2024 anirudha-simha. All rights reserved.
+ * © 2025 anirudha-simha. All rights reserved.
  */
 
 // ===== CONFIGURATION CONSTANTS =====
