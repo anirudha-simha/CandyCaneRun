@@ -26,7 +26,7 @@
     <meta name="author" content="anirudha-simha">
     <meta name="theme-color" content="#1A2E44">
 
-    <!-- Open Graph (Facebook, WhatsApp, Telegram, Signal, iMessage, Discord, LinkedIn, etc.) -->
+    <!-- Open Graph -->
     <meta property="og:title" content="Reindeer Chase">
     <meta property="og:description"
         content="Help Noodles the cat catch the reindeer in this festive endless runner game!">
@@ -61,23 +61,7 @@
 
 <body>
     <div id="game-container">
-        <div id="game-wrapper">
-            <div id="ui-layer">
-                <div id="start-screen" class="message-box">
-                    <h1>Reindeer Chase</h1>
-                    <p>Help Noodles catch the reindeer!</p>
-                    <p><small>Tap or Space to Jump</small></p>
-                    <button id="start-btn">Play Now</button>
-                    <p class="attribution">A game by <a href="https://github.com/anirudha-simha"
-                            target="_blank">anirudha-simha</a></p>
-                </div>
-                <div id="game-over-screen" class="message-box" style="display: none;">
-                    <h1>Ouch!</h1>
-                    <p>Score: <span id="final-score">0</span></p>
-                    <button id="restart-btn">Try Again</button>
-                </div>
-            </div>
-        </div>
+        <div id="game-wrapper"></div>
     </div>
 
     <!-- Game Logic -->

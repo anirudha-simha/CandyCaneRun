@@ -4,34 +4,35 @@
  * Created by: anirudha-simha
  * GitHub: https://github.com/anirudha-simha/CandyCaneRun
  * 
- * © 2024 anirudha-simha. All rights reserved.
+ * © 2025 anirudha-simha. All rights reserved.
  */
 
 // ===== CONFIGURATION CONSTANTS =====
 
-// Color palette
 const COLORS = {
     BACKGROUND: 0x1A2E44,
     GROUND: 0xE0F2F7,
     GROUND_BORDER: 0xC5E4ED,
     MOUNTAIN: 0x2C4A6B,
-    MOON: 0xFFF8DC
+    MOON: 0xFFF8DC,
+    UI_BG: 0xFFFFFF,
+    UI_TEXT: 0x333333,
+    UI_BUTTON: 0xFF6B6B,
+    UI_BUTTON_SHADOW: 0xD45050
 };
 
-// Game configuration
 const GAME_CONFIG = {
     GROUND_HEIGHT_RATIO: 0.15,
     OBSTACLE_SPAWN_DELAY_MIN: 1500,
     OBSTACLE_SPAWN_DELAY_MAX: 2200,
-    OBSTACLE_START_SPEED: 150,       // Speed at score 0
-    OBSTACLE_MAX_SPEED: 500,         // Maximum speed cap
-    OBSTACLE_SPEED_PER_POINT: 15,    // Speed increase per point scored
+    OBSTACLE_START_SPEED: 150,
+    OBSTACLE_MAX_SPEED: 500,
+    OBSTACLE_SPEED_PER_POINT: 15,
     OBSTACLE_MIN_HEIGHT: 40,
     OBSTACLE_MAX_HEIGHT: 90,
     OBSTACLE_WIDTH: 20
 };
 
-// Player configuration
 const PLAYER_CONFIG = {
     JUMP_VELOCITY: -600,
     GRAVITY: 1000,
@@ -41,7 +42,6 @@ const PLAYER_CONFIG = {
     FONT_SIZE: '40px'
 };
 
-// Mountain configuration
 const MOUNTAIN_CONFIG = {
     NUM_PEAKS: 15,
     PEAK_SPACING: 400,
@@ -52,10 +52,9 @@ const MOUNTAIN_CONFIG = {
     MIN_HEIGHT_PERCENT: 0.4,
     SCROLL_SPEED: 0.5,
     ALPHA: 1.0,
-    BUFFER_DISTANCE: 800  // Pre-generate hills this far ahead
+    BUFFER_DISTANCE: 800
 };
 
-// Snow particle configuration
 const SNOW_CONFIG = {
     LIFESPAN_MIN: 8000,
     LIFESPAN_MAX: 15000,
@@ -69,7 +68,6 @@ const SNOW_CONFIG = {
     FREQUENCY: 50
 };
 
-// Audio configuration
 const AUDIO_CONFIG = {
     SYNTH_VOLUME: -8,
     JUMP_VOLUME: -10,
@@ -79,7 +77,6 @@ const AUDIO_CONFIG = {
     REVERB_WET: 0.3
 };
 
-// Music tracks - randomly selected on game start
 const MUSIC_TRACKS = [
     {
         name: "Jingle Bells",
@@ -97,9 +94,8 @@ const MUSIC_TRACKS = [
     }
 ];
 
-// UI configuration
 const UI_CONFIG = {
-    SAFE_AREA_MARGIN: 50,  // Extra margin for notched phones
+    SAFE_AREA_MARGIN: 50,
     MOON_RADIUS: 40,
     MOON_ALPHA: 0.9,
     MOON_OFFSET_X: 80,
@@ -114,46 +110,36 @@ const UI_CONFIG = {
     SCORE_OFFSET_Y: 20
 };
 
-// ===== GAME SCENE =====
+// ===== BACKGROUND SCENE =====
+// Runs continuously behind all other scenes
+// Contains: moon, mountains, snow, ground, reindeer
 
-class GameScene extends Phaser.Scene {
+class BackgroundScene extends Phaser.Scene {
     constructor() {
-        super({ key: 'GameScene' });
+        super({ key: 'BackgroundScene' });
     }
 
     create() {
-        this.isGameRunning = false;
-        this.score = 0;
-        this.audioStarted = false;
-        this.mountainOffset = 0;
-
-        this.physics.world.setBounds(0, 0, this.scale.width, this.scale.height);
+        this.groundHeight = this.scale.height * GAME_CONFIG.GROUND_HEIGHT_RATIO;
 
         this.createBackground();
         this.createMoon();
         this.createMountains();
         this.createSnow();
-        this.createObstacleTexture();
         this.createGround();
-        this.createPlayer();
         this.createReindeer();
-        this.createObstacleSystem();
-        this.createPhysics();
-        this.createInput();
-        this.createUI();
 
         this.scale.on('resize', this.resize, this);
     }
 
     createBackground() {
-        const background = this.add.rectangle(
+        this.bg = this.add.rectangle(
             this.scale.width / 2,
             this.scale.height / 2,
             this.scale.width,
             this.scale.height,
             COLORS.BACKGROUND
         );
-        background.setDepth(-3);
     }
 
     createMoon() {
@@ -165,14 +151,76 @@ class GameScene extends Phaser.Scene {
             COLORS.MOON,
             UI_CONFIG.MOON_ALPHA
         );
-        this.moon.setDepth(-2);
+        this.moon.setDepth(1);
+
+        // Add a slight glow effect
+        // color, outerStrength, innerStrength, knockout
+        this.moon.postFX.addGlow(COLORS.MOON, 1.5, 0, false);
     }
 
     createMountains() {
-        this.hillsGraphics = this.add.graphics();
-        this.hillsGraphics.setDepth(-1);
-        this.generateMountainPeaks();
-        this.drawHills();
+        // Create a container or group for mountain peaks
+        // We will create enough peaks to cover the screen width + buffer
+        // Each peak is a separate Graphics object
+        this.mountainPixelsPerUnit = 1; // logical width
+        this.mountainPeaks = [];
+
+        const width = this.scale.width;
+        // Calculate how many peaks we need to cover the screen + buffer
+        // Assuming average width is (MIN + MAX) / 2
+        const avgWidth = (MOUNTAIN_CONFIG.MIN_WIDTH + MOUNTAIN_CONFIG.MAX_WIDTH) / 2;
+        const totalWidthNeeded = width + MOUNTAIN_CONFIG.BUFFER_DISTANCE * 2;
+        const count = Math.ceil(totalWidthNeeded / (avgWidth + MOUNTAIN_CONFIG.PEAK_SPACING)) + 2;
+
+        let currentX = -MOUNTAIN_CONFIG.BUFFER_DISTANCE;
+
+        for (let i = 0; i < count; i++) {
+            const peak = this.add.graphics();
+            peak.setDepth(2); // Ensure mountains are above moon/bg but below ground/snow
+            this.mountainPeaks.push(peak);
+            currentX = this.recyclePeak(peak, currentX);
+        }
+    }
+
+    // Draws a new random peak at specified X and returns the X for the NEXT peak
+    recyclePeak(peak, startX) {
+        peak.clear();
+
+        const width = MOUNTAIN_CONFIG.MIN_WIDTH + Math.random() * (MOUNTAIN_CONFIG.MAX_WIDTH - MOUNTAIN_CONFIG.MIN_WIDTH);
+        const maxMountainHeight = this.scale.height * MOUNTAIN_CONFIG.HEIGHT_RATIO;
+        const height = maxMountainHeight * MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT +
+            Math.random() * maxMountainHeight * (1 - MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT);
+
+        const groundY = this.scale.height - this.groundHeight;
+
+        peak.fillStyle(COLORS.MOUNTAIN, MOUNTAIN_CONFIG.ALPHA);
+        peak.beginPath();
+
+        // Draw the peak relative to (0, 0) of the Graphics object
+        // Then we set the position of the Graphics object to (startX, 0)
+
+        // Start bottom-left
+        peak.moveTo(0, groundY);
+
+        // Go up and across
+        for (let x = 0; x <= width; x += 20) {
+            const progress = x / width;
+            const y = groundY - Math.sin(progress * Math.PI) * height;
+            peak.lineTo(x, y);
+        }
+
+        // Bottom-right
+        peak.lineTo(width, groundY);
+        peak.closePath();
+        peak.fillPath();
+
+        // Store metadata for recycling
+        peak.x = startX;
+        peak.y = 0; // We draw relative to groundY, so y is 0
+        peak.peakWidth = width;
+
+        // Return the start X for the next mountain
+        return startX + MOUNTAIN_CONFIG.PEAK_SPACING + Math.random() * MOUNTAIN_CONFIG.PEAK_SPACING_VARIANCE;
     }
 
     createSnow() {
@@ -191,49 +239,16 @@ class GameScene extends Phaser.Scene {
             quantity: SNOW_CONFIG.QUANTITY,
             frequency: SNOW_CONFIG.FREQUENCY
         });
-    }
-
-    createObstacleTexture() {
-        if (!this.textures.exists('candyCane')) {
-            const width = GAME_CONFIG.OBSTACLE_WIDTH;
-            const height = GAME_CONFIG.OBSTACLE_MAX_HEIGHT;
-            const graphics = this.make.graphics({ x: 0, y: 0, add: false });
-            graphics.fillStyle(0xffffff);
-            graphics.fillRect(0, 0, width, height);
-            graphics.fillStyle(0xff0000);
-            // Draw red stripes proportionally
-            const stripeHeight = height / 6;
-            for (let i = 1; i < 6; i += 2) {
-                graphics.fillRect(0, i * stripeHeight, width, stripeHeight);
-            }
-            graphics.generateTexture('candyCane', width, height);
-        }
+        this.snowEmitter.setDepth(3);
     }
 
     createGround() {
-        this.groundHeight = this.scale.height * GAME_CONFIG.GROUND_HEIGHT_RATIO;
-
         this.ground = this.add.graphics();
         this.ground.fillStyle(COLORS.GROUND, 1);
         this.ground.fillRect(0, this.scale.height - this.groundHeight, this.scale.width, this.groundHeight);
         this.ground.fillStyle(COLORS.GROUND_BORDER, 1);
         this.ground.fillRect(0, this.scale.height - this.groundHeight, this.scale.width, 10);
-    }
-
-    createPlayer() {
-        // Start cat on the ground, not at y=0
-        const groundY = this.scale.height - this.groundHeight - 25;
-        this.cat = this.add.text(50, groundY, "🐈‍⬛", { fontSize: PLAYER_CONFIG.FONT_SIZE });
-        this.cat.setOrigin(0.5, 0.5);
-        this.cat.setFlipX(true);
-        this.cat.setTint(0x444444);
-
-        this.physics.add.existing(this.cat);
-        this.cat.body.setCollideWorldBounds(true);
-        this.cat.body.setGravityY(PLAYER_CONFIG.GRAVITY);
-        this.cat.body.setSize(PLAYER_CONFIG.SIZE, PLAYER_CONFIG.SIZE);
-        this.cat.body.setOffset(PLAYER_CONFIG.OFFSET, PLAYER_CONFIG.OFFSET);
-        this.cat.isGrounded = true;  // Start on the ground
+        this.ground.setDepth(4);
     }
 
     createReindeer() {
@@ -244,6 +259,7 @@ class GameScene extends Phaser.Scene {
             "🦌",
             { fontSize: UI_CONFIG.REINDEER_FONT_SIZE }
         );
+        this.reindeer.setDepth(5);
         this.reindeer.setOrigin(0.5, 0.5);
         this.reindeer.setFlipX(true);
 
@@ -257,9 +273,273 @@ class GameScene extends Phaser.Scene {
         });
     }
 
+    resize(gameSize) {
+        const width = gameSize.width;
+        const height = gameSize.height;
+        this.groundHeight = height * GAME_CONFIG.GROUND_HEIGHT_RATIO;
+
+        this.bg.setPosition(width / 2, height / 2);
+        this.bg.setSize(width, height);
+
+        this.moon.x = width - UI_CONFIG.MOON_OFFSET_X - UI_CONFIG.SAFE_AREA_MARGIN;
+
+        this.ground.clear();
+        this.ground.fillStyle(COLORS.GROUND, 1);
+        this.ground.fillRect(0, height - this.groundHeight, width, this.groundHeight);
+        this.ground.fillStyle(COLORS.GROUND_BORDER, 1);
+        this.ground.fillRect(0, height - this.groundHeight, width, 10);
+
+        this.reindeer.x = width - UI_CONFIG.REINDEER_OFFSET_X - UI_CONFIG.SAFE_AREA_MARGIN;
+        this.reindeer.y = height - this.groundHeight - UI_CONFIG.REINDEER_OFFSET_Y;
+
+        // Recreate mountains entirely on resize for simplicity
+        this.mountainPeaks.forEach(peak => peak.destroy());
+        this.createMountains();
+
+        this.snowEmitter.setEmitZone({
+            type: 'random',
+            source: new Phaser.Geom.Rectangle(0, 0, width, 1)
+        });
+    }
+
+    update() {
+        const buffer = MOUNTAIN_CONFIG.BUFFER_DISTANCE;
+
+        // Find the right-most peak to append after
+        let rightMostPeak = null;
+        let rightMostX = -Infinity;
+        this.mountainPeaks.forEach(peak => {
+            if (peak.x > rightMostX) {
+                rightMostX = peak.x;
+                rightMostPeak = peak;
+            }
+        });
+
+        this.mountainPeaks.forEach(peak => {
+            peak.x -= MOUNTAIN_CONFIG.SCROLL_SPEED;
+
+            // If peak is completely off screen to the left
+            if (peak.x + peak.peakWidth < -buffer) {
+                // Recycle it! Place it after the right-most peak
+                // We use the rightMostPeak's END position (x + width) plus spacing
+                const spacing = MOUNTAIN_CONFIG.PEAK_SPACING + Math.random() * MOUNTAIN_CONFIG.PEAK_SPACING_VARIANCE;
+
+                // If rightMostPeak is the one we are currently moving (unlikely but possible if only 1 peak), fallback
+                let anchorX = rightMostPeak ? (rightMostPeak.x + rightMostPeak.peakWidth) : (this.scale.width + buffer);
+
+                // Update this peak
+                this.recyclePeak(peak, anchorX + spacing);
+
+                // Update rightMostPeak tracking for next iteration in same frame
+                rightMostPeak = peak;
+                // Note: we can't easily update rightMostX accurately without recalculating width, 
+                // but we updated the peak physically so next iteration will find it if needed.
+            }
+        });
+    }
+}
+
+// ===== MENU SCENE =====
+// Start screen with title and play button
+
+class MenuScene extends Phaser.Scene {
+    constructor() {
+        super({ key: 'MenuScene' });
+    }
+
+    create() {
+        const centerX = this.scale.width / 2;
+        const centerY = this.scale.height / 2;
+
+        // Semi-transparent panel
+        const panel = this.add.rectangle(centerX, centerY, 350, 280, COLORS.UI_BG, 0.95);
+        panel.setStrokeStyle(0);
+
+        // Title
+        this.add.text(centerX, centerY - 80, '🎄 Reindeer Chase 🎄', {
+            fontSize: '28px',
+            color: '#333',
+            fontFamily: 'Segoe UI, sans-serif',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+
+        // Subtitle
+        this.add.text(centerX, centerY - 35, 'Help Noodles catch the reindeer!', {
+            fontSize: '16px',
+            color: '#666',
+            fontFamily: 'Segoe UI, sans-serif'
+        }).setOrigin(0.5);
+
+        // Instructions
+        this.add.text(centerX, centerY, 'Tap or Space to Jump', {
+            fontSize: '14px',
+            color: '#888',
+            fontFamily: 'Segoe UI, sans-serif'
+        }).setOrigin(0.5);
+
+        // Play button
+        const btnY = centerY + 50;
+        const btn = this.add.rectangle(centerX, btnY, 150, 50, COLORS.UI_BUTTON);
+        btn.setInteractive({ useHandCursor: true });
+
+        const btnText = this.add.text(centerX, btnY, 'Play Now', {
+            fontSize: '20px',
+            color: '#fff',
+            fontFamily: 'Segoe UI, sans-serif',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+
+        // Button hover effects
+        btn.on('pointerover', () => btn.setFillStyle(0xFF8888));
+        btn.on('pointerout', () => btn.setFillStyle(COLORS.UI_BUTTON));
+        btn.on('pointerdown', () => this.startGame());
+
+        // Attribution (clickable link to GitHub)
+        const attribution = this.add.text(centerX, centerY + 110, 'A game by anirudha-simha', {
+            fontSize: '12px',
+            color: '#888',
+            fontFamily: 'Segoe UI, sans-serif'
+        }).setOrigin(0.5);
+
+        attribution.setInteractive({ useHandCursor: true });
+        attribution.on('pointerover', () => attribution.setColor('#FF6B6B'));
+        attribution.on('pointerout', () => attribution.setColor('#888'));
+        attribution.on('pointerdown', () => {
+            window.open('https://github.com/anirudha-simha', '_blank');
+        });
+
+        // Also allow space/tap to start
+        this.input.keyboard.once('keydown-SPACE', () => this.startGame());
+        this.input.once('pointerdown', (pointer) => {
+            // Only if not clicking the button
+            if (!btn.getBounds().contains(pointer.x, pointer.y)) {
+                this.startGame();
+            }
+        });
+    }
+
+    startGame() {
+        this.scene.start('GameScene');
+    }
+}
+
+// ===== GAME OVER SCENE =====
+// Shows score and try again button
+
+class GameOverScene extends Phaser.Scene {
+    constructor() {
+        super({ key: 'GameOverScene' });
+    }
+
+    create() {
+        const centerX = this.scale.width / 2;
+        const centerY = this.scale.height / 2;
+        const score = this.scene.settings.data?.score || 0;
+
+        // Semi-transparent panel
+        const panel = this.add.rectangle(centerX, centerY, 300, 220, COLORS.UI_BG, 0.95);
+
+        // Title
+        this.add.text(centerX, centerY - 60, 'Ouch!', {
+            fontSize: '36px',
+            color: '#333',
+            fontFamily: 'Segoe UI, sans-serif',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+
+        // Score
+        this.add.text(centerX, centerY - 10, `Score: ${score}`, {
+            fontSize: '24px',
+            color: '#666',
+            fontFamily: 'Segoe UI, sans-serif'
+        }).setOrigin(0.5);
+
+        // Try Again button
+        const btnY = centerY + 50;
+        const btn = this.add.rectangle(centerX, btnY, 150, 50, COLORS.UI_BUTTON);
+        btn.setInteractive({ useHandCursor: true });
+
+        this.add.text(centerX, btnY, 'Try Again', {
+            fontSize: '20px',
+            color: '#fff',
+            fontFamily: 'Segoe UI, sans-serif',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+
+        btn.on('pointerover', () => btn.setFillStyle(0xFF8888));
+        btn.on('pointerout', () => btn.setFillStyle(COLORS.UI_BUTTON));
+        btn.on('pointerdown', () => this.restartGame());
+
+        // Also allow space/tap to restart
+        this.input.keyboard.once('keydown-SPACE', () => this.restartGame());
+    }
+
+    restartGame() {
+        this.scene.start('GameScene');
+    }
+}
+
+// ===== GAME SCENE =====
+// Main gameplay - player, obstacles, scoring
+
+class GameScene extends Phaser.Scene {
+    constructor() {
+        super({ key: 'GameScene' });
+    }
+
+    create() {
+        this.score = 0;
+        this.audioStarted = false;
+        this.groundHeight = this.scale.height * GAME_CONFIG.GROUND_HEIGHT_RATIO;
+
+        this.createObstacleTexture();
+        this.createPlayer();
+        this.createObstacleSystem();
+        this.createPhysics();
+        this.createInput();
+        this.createUI();
+
+        // Start audio
+        this.initAudio();
+
+        // Schedule first obstacle
+        this.scheduleNextObstacle();
+
+        this.scale.on('resize', this.resize, this);
+    }
+
+    createObstacleTexture() {
+        if (!this.textures.exists('candyCane')) {
+            const width = GAME_CONFIG.OBSTACLE_WIDTH;
+            const height = GAME_CONFIG.OBSTACLE_MAX_HEIGHT;
+            const graphics = this.make.graphics({ x: 0, y: 0, add: false });
+            graphics.fillStyle(0xffffff);
+            graphics.fillRect(0, 0, width, height);
+            graphics.fillStyle(0xff0000);
+            const stripeHeight = height / 6;
+            for (let i = 1; i < 6; i += 2) {
+                graphics.fillRect(0, i * stripeHeight, width, stripeHeight);
+            }
+            graphics.generateTexture('candyCane', width, height);
+        }
+    }
+
+    createPlayer() {
+        const groundY = this.scale.height - this.groundHeight - 25;
+        this.cat = this.add.text(100, groundY, "🐈‍⬛", { fontSize: PLAYER_CONFIG.FONT_SIZE });
+        this.cat.setOrigin(0.5, 0.5);
+        this.cat.setFlipX(true);
+
+        this.physics.add.existing(this.cat);
+        this.cat.body.setCollideWorldBounds(true);
+        this.cat.body.setGravityY(PLAYER_CONFIG.GRAVITY);
+        this.cat.body.setSize(PLAYER_CONFIG.SIZE, PLAYER_CONFIG.SIZE);
+        this.cat.body.setOffset(PLAYER_CONFIG.OFFSET, PLAYER_CONFIG.OFFSET);
+        // Removing isGrounded property - we will use body.touching.down
+    }
+
     createObstacleSystem() {
         this.obstacles = this.physics.add.group();
-        // spawnEvent will be created dynamically with random delays
         this.spawnEvent = null;
     }
 
@@ -269,8 +549,6 @@ class GameScene extends Phaser.Scene {
     }
 
     scheduleNextObstacle() {
-        if (!this.isGameRunning) return;
-
         this.spawnEvent = this.time.delayedCall(
             this.getRandomSpawnDelay(),
             () => {
@@ -292,11 +570,12 @@ class GameScene extends Phaser.Scene {
         this.physics.add.existing(this.physicsFloor, true);
 
         this.physics.add.collider(this.cat, this.physicsFloor, () => {
-            this.cat.isGrounded = true;
+            // Collision callback no longer needed for state, can be used for FX if needed
             this.cat.rotation = 0;
         });
 
-        this.physics.add.overlap(this.cat, this.obstacles, this.hitObstacle, null, this);
+        // Store collider reference so we can disable it on game over
+        this.obstacleCollider = this.physics.add.overlap(this.cat, this.obstacles, this.hitObstacle, null, this);
     }
 
     createInput() {
@@ -312,179 +591,62 @@ class GameScene extends Phaser.Scene {
             'Score: 0',
             {
                 fontSize: UI_CONFIG.SCORE_FONT_SIZE,
-                fill: '#fff',
+                color: '#fff',
                 fontFamily: 'Segoe UI, sans-serif'
             }
         );
         this.scoreText.setDepth(10);
-        this.scoreText.setVisible(false);
-
-        document.getElementById('start-btn').onclick = () => this.startGame();
-        document.getElementById('restart-btn').onclick = () => this.startGame();
-    }
-
-    generateMountainPeaks() {
-        const height = this.scale.height;
-        const maxMountainHeight = height * MOUNTAIN_CONFIG.HEIGHT_RATIO;
-        const buffer = MOUNTAIN_CONFIG.BUFFER_DISTANCE;
-
-        this.mountainPeaks = [];
-
-        // Start generating from before the screen (negative x) to avoid pop-in
-        const startX = -buffer;
-
-        for (let i = 0; i < MOUNTAIN_CONFIG.NUM_PEAKS; i++) {
-            this.mountainPeaks.push({
-                x: startX + i * MOUNTAIN_CONFIG.PEAK_SPACING + Math.random() * MOUNTAIN_CONFIG.PEAK_SPACING_VARIANCE,
-                width: MOUNTAIN_CONFIG.MIN_WIDTH + Math.random() * (MOUNTAIN_CONFIG.MAX_WIDTH - MOUNTAIN_CONFIG.MIN_WIDTH),
-                height: maxMountainHeight * MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT +
-                    Math.random() * maxMountainHeight * (1 - MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT)
-            });
-        }
-    }
-
-    drawHills() {
-        this.hillsGraphics.clear();
-        const width = this.scale.width;
-        const height = this.scale.height;
-        const groundY = height - this.groundHeight;
-        const maxMountainHeight = height * MOUNTAIN_CONFIG.HEIGHT_RATIO;
-        const buffer = MOUNTAIN_CONFIG.BUFFER_DISTANCE;
-
-        this.hillsGraphics.fillStyle(COLORS.MOUNTAIN, MOUNTAIN_CONFIG.ALPHA);
-        this.hillsGraphics.beginPath();
-
-        this.hillsGraphics.moveTo(-buffer, height);
-        this.hillsGraphics.lineTo(-buffer, groundY);
-
-        this.mountainPeaks.forEach((peak) => {
-            const peakX = peak.x - this.mountainOffset;
-
-            // Use buffer distance for visibility check to prevent pop-in
-            if (peakX + peak.width > -buffer && peakX < width + buffer) {
-                this.hillsGraphics.lineTo(peakX, groundY);
-
-                for (let x = 0; x <= peak.width; x += 10) {
-                    const progress = x / peak.width;
-                    const y = groundY - Math.sin(progress * Math.PI) * peak.height;
-                    this.hillsGraphics.lineTo(peakX + x, y);
-                }
-
-                this.hillsGraphics.lineTo(peakX + peak.width, groundY);
-            }
-        });
-
-        this.hillsGraphics.lineTo(width + buffer, groundY);
-        this.hillsGraphics.lineTo(width + buffer, height);
-        this.hillsGraphics.lineTo(-buffer, height);
-
-        this.hillsGraphics.closePath();
-        this.hillsGraphics.fillPath();
-
-        // Recycle peaks - use buffer distance for consistent recycling
-        const firstPeak = this.mountainPeaks[0];
-        if (firstPeak.x + firstPeak.width - this.mountainOffset < -buffer) {
-            this.mountainPeaks.shift();
-            const lastPeak = this.mountainPeaks[this.mountainPeaks.length - 1];
-            this.mountainPeaks.push({
-                x: lastPeak.x + MOUNTAIN_CONFIG.PEAK_SPACING + Math.random() * MOUNTAIN_CONFIG.PEAK_SPACING_VARIANCE,
-                width: MOUNTAIN_CONFIG.MIN_WIDTH + Math.random() * (MOUNTAIN_CONFIG.MAX_WIDTH - MOUNTAIN_CONFIG.MIN_WIDTH),
-                height: maxMountainHeight * MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT +
-                    Math.random() * maxMountainHeight * (1 - MOUNTAIN_CONFIG.MIN_HEIGHT_PERCENT)
-            });
-        }
     }
 
     async initAudio() {
         if (this.audioStarted) return;
 
-        await Tone.start();
-        this.audioStarted = true;
+        try {
+            await Tone.start();
+            this.audioStarted = true;
 
-        this.synth = new Tone.PolySynth(Tone.Synth, {
-            oscillator: { type: "sine" },
-            envelope: { attack: 0.005, decay: 0.2, sustain: 0.4, release: 1.5 }
-        }).toDestination();
-        this.synth.volume.value = AUDIO_CONFIG.SYNTH_VOLUME;
+            this.synth = new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: "sine" },
+                envelope: { attack: 0.005, decay: 0.2, sustain: 0.4, release: 1.5 }
+            }).toDestination();
+            this.synth.volume.value = AUDIO_CONFIG.SYNTH_VOLUME;
 
-        const reverb = new Tone.Reverb({
-            decay: AUDIO_CONFIG.REVERB_DECAY,
-            wet: AUDIO_CONFIG.REVERB_WET
-        }).toDestination();
-        this.synth.connect(reverb);
+            const reverb = new Tone.Reverb({
+                decay: AUDIO_CONFIG.REVERB_DECAY,
+                wet: AUDIO_CONFIG.REVERB_WET
+            }).toDestination();
+            this.synth.connect(reverb);
 
-        this.jumpSynth = new Tone.Synth({
-            oscillator: { type: "square" },
-            envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 }
-        }).toDestination();
-        this.jumpSynth.volume.value = AUDIO_CONFIG.JUMP_VOLUME;
+            this.jumpSynth = new Tone.Synth({
+                oscillator: { type: "square" },
+                envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 }
+            }).toDestination();
+            this.jumpSynth.volume.value = AUDIO_CONFIG.JUMP_VOLUME;
 
-        this.hitSynth = new Tone.MembraneSynth().toDestination();
-        this.hitSynth.volume.value = AUDIO_CONFIG.HIT_VOLUME;
+            this.hitSynth = new Tone.MembraneSynth().toDestination();
+            this.hitSynth.volume.value = AUDIO_CONFIG.HIT_VOLUME;
 
-        Tone.Transport.bpm.value = AUDIO_CONFIG.BPM;
-    }
+            Tone.Transport.bpm.value = AUDIO_CONFIG.BPM;
 
-    selectRandomTrack() {
-        // Stop and dispose of previous track if exists
-        if (this.musicPart) {
-            this.musicPart.stop();
-            this.musicPart.dispose();
-        }
-
-        // Select random track
-        const track = MUSIC_TRACKS[Math.floor(Math.random() * MUSIC_TRACKS.length)];
-        console.log(`Now playing: ${track.name}`);
-
-        this.musicPart = new Tone.Part((time, note) => {
-            this.synth.triggerAttackRelease(note, "8n", time);
-        }, track.melody);
-
-        this.musicPart.loop = true;
-        this.musicPart.loopEnd = track.loopEnd;
-    }
-
-    startGame() {
-        this.initAudio().then(() => {
-            this.selectRandomTrack();
-            Tone.Transport.stop();
-            Tone.Transport.position = 0;
+            // Start music
+            const track = MUSIC_TRACKS[Math.floor(Math.random() * MUSIC_TRACKS.length)];
+            this.musicPart = new Tone.Part((time, note) => {
+                this.synth.triggerAttackRelease(note, "8n", time);
+            }, track.melody);
+            this.musicPart.loop = true;
+            this.musicPart.loopEnd = track.loopEnd;
             Tone.Transport.start();
             this.musicPart.start(0);
-        });
-
-        this.isGameRunning = true;
-        this.score = 0;
-        this.scoreText.setText('Score: 0');
-        this.scoreText.setVisible(true);
-
-        document.getElementById('start-screen').style.display = 'none';
-        document.getElementById('game-over-screen').style.display = 'none';
-
-        this.obstacles.clear(true, true);
-        // Reset cat to ground position
-        this.cat.y = this.scale.height - this.groundHeight - 25;
-        this.cat.body.setVelocity(0, 0);
-        this.cat.rotation = 0;
-        this.cat.isGrounded = true;  // Start on the ground, ready to jump
-
-        // Cancel any existing spawn event and start fresh
-        if (this.spawnEvent) {
-            this.spawnEvent.remove();
+        } catch (e) {
+            console.log('Audio initialization failed:', e);
         }
-        this.scheduleNextObstacle();
-        this.physics.resume();
     }
 
     handleInput() {
-        if (!this.isGameRunning) return;
         this.jump();
     }
 
     spawnObstacle() {
-        if (!this.isGameRunning) return;
-
-        // Random height for variety
         const obstacleHeight = GAME_CONFIG.OBSTACLE_MIN_HEIGHT +
             Math.random() * (GAME_CONFIG.OBSTACLE_MAX_HEIGHT - GAME_CONFIG.OBSTACLE_MIN_HEIGHT);
 
@@ -493,53 +655,43 @@ class GameScene extends Phaser.Scene {
 
         const obstacle = this.obstacles.create(x, y, 'candyCane');
         obstacle.setOrigin(0.5, 0.5);
-
-        // Scale the obstacle based on the random height
         const scaleY = obstacleHeight / GAME_CONFIG.OBSTACLE_MAX_HEIGHT;
         obstacle.setScale(1, scaleY);
-
-        // Set velocity using current calculated speed
         obstacle.setVelocityX(-this.getCurrentSpeed());
         obstacle.body.allowGravity = false;
         obstacle.body.setImmovable(true);
-
-        // Update physics body to match scaled size
         obstacle.body.setSize(GAME_CONFIG.OBSTACLE_WIDTH, obstacleHeight);
     }
 
     getCurrentSpeed() {
-        // Simple score-based speed: starts slow, increases per point, caps at max
-        const speed = GAME_CONFIG.OBSTACLE_START_SPEED +
-            (this.score * GAME_CONFIG.OBSTACLE_SPEED_PER_POINT);
+        const speed = GAME_CONFIG.OBSTACLE_START_SPEED + (this.score * GAME_CONFIG.OBSTACLE_SPEED_PER_POINT);
         return Math.min(speed, GAME_CONFIG.OBSTACLE_MAX_SPEED);
     }
 
-    hitObstacle(cat, obstacle) {
-        if (!this.isGameRunning) return;
-
-        this.isGameRunning = false;
-        this.physics.pause();
-        if (this.spawnEvent) {
-            this.spawnEvent.remove();
+    hitObstacle() {
+        // Disable collider immediately to prevent multiple callbacks (Phaser-native debouncing)
+        if (this.obstacleCollider) {
+            this.obstacleCollider.destroy();
         }
 
+        // Stop game
+        if (this.spawnEvent) this.spawnEvent.remove();
+        this.physics.pause();
+
+        // Stop music
         if (this.audioStarted) {
             this.hitSynth.triggerAttackRelease("C2", "8n");
             Tone.Transport.stop();
-            this.musicPart.stop();
+            if (this.musicPart) this.musicPart.stop();
         }
 
-        // Update score and show game over screen with slight delay for reliability
-        document.getElementById('final-score').textContent = this.score;
-        const gameOverScreen = document.getElementById('game-over-screen');
-        gameOverScreen.style.display = 'flex';
-        gameOverScreen.style.flexDirection = 'column';
+        // Transition to game over scene with score
+        this.scene.start('GameOverScene', { score: this.score });
     }
 
     jump() {
-        if (this.cat.isGrounded) {
+        if (this.cat.body.touching.down) {
             this.cat.body.setVelocityY(PLAYER_CONFIG.JUMP_VELOCITY);
-            this.cat.isGrounded = false;
 
             if (this.audioStarted) {
                 this.jumpSynth.triggerAttackRelease("C5", "16n");
@@ -557,53 +709,23 @@ class GameScene extends Phaser.Scene {
     resize(gameSize) {
         const width = gameSize.width;
         const height = gameSize.height;
-
-        this.cameras.main.setViewport(0, 0, width, height);
-        this.physics.world.setBounds(0, 0, width, height);
-
-        this.ground.clear();
         this.groundHeight = height * GAME_CONFIG.GROUND_HEIGHT_RATIO;
-        this.ground.fillStyle(COLORS.GROUND, 1);
-        this.ground.fillRect(0, height - this.groundHeight, width, this.groundHeight);
-        this.ground.fillStyle(COLORS.GROUND_BORDER, 1);
-        this.ground.fillRect(0, height - this.groundHeight, width, 10);
 
-        this.physicsFloor.y = height - this.groundHeight;
+        this.physicsFloor.setPosition(width / 2, height - this.groundHeight);
+        this.physicsFloor.setSize(width, 10);
         this.physicsFloor.body.updateFromGameObject();
 
         if (this.cat.y > height - this.groundHeight) {
-            this.cat.y = height - this.groundHeight - 50;
+            this.cat.y = height - this.groundHeight - 25;
         }
-
-        this.reindeer.x = width - UI_CONFIG.REINDEER_OFFSET_X - UI_CONFIG.SAFE_AREA_MARGIN;
-        this.reindeer.y = height - this.groundHeight - UI_CONFIG.REINDEER_OFFSET_Y;
-
-        this.moon.x = width - UI_CONFIG.MOON_OFFSET_X - UI_CONFIG.SAFE_AREA_MARGIN;
-
-        this.generateMountainPeaks();
-        this.drawHills();
-
-        this.snowEmitter.setEmitZone({
-            type: 'random',
-            source: new Phaser.Geom.Rectangle(0, 0, width, 1)
-        });
     }
 
     update() {
-        if (!this.isGameRunning) return;
-
-        this.mountainOffset += MOUNTAIN_CONFIG.SCROLL_SPEED;
-        this.drawHills();
-
-        // Sync all obstacles to current speed so they maintain consistent spacing
+        // Sync all obstacles to current speed
         const currentSpeed = this.getCurrentSpeed();
-
         this.obstacles.children.iterate((obstacle) => {
             if (obstacle) {
-                // Update velocity to current speed
                 obstacle.setVelocityX(-currentSpeed);
-
-                // Check if off screen and score
                 if (obstacle.x < -50) {
                     obstacle.destroy();
                     this.score++;
@@ -612,11 +734,18 @@ class GameScene extends Phaser.Scene {
             }
         });
     }
+
+    shutdown() {
+        // Clean up when scene stops
+        if (this.audioStarted && this.musicPart) {
+            Tone.Transport.stop();
+            this.musicPart.stop();
+        }
+    }
 }
 
 // ===== GAME INITIALIZATION =====
 
-// Get wrapper element for sizing
 const gameWrapper = document.getElementById('game-wrapper');
 
 const config = {
@@ -637,16 +766,18 @@ const config = {
             debug: false
         }
     },
-    scene: [GameScene]
+    scene: [BackgroundScene, MenuScene, GameScene, GameOverScene]
 };
 
 const game = new Phaser.Game(config);
 
-window.addEventListener('focus', () => {
-    if (game) game.step();
+// Start with background + menu
+game.events.once('ready', () => {
+    game.scene.start('BackgroundScene');
+    game.scene.start('MenuScene');
 });
 
-// Reload page on orientation change (mobile)
+// Reload on orientation change
 let initialOrientation = window.innerWidth > window.innerHeight ? 'landscape' : 'portrait';
 window.addEventListener('resize', () => {
     const currentOrientation = window.innerWidth > window.innerHeight ? 'landscape' : 'portrait';
