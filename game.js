@@ -65,31 +65,6 @@ const SNOW_CONFIG = {
     FREQUENCY: 50
 };
 
-const AUDIO_CONFIG = {
-    SYNTH_VOLUME: -8,
-    JUMP_VOLUME: -10,
-    HIT_VOLUME: -5,
-    BPM: 120,
-    REVERB_DECAY: 2,
-    REVERB_WET: 0.3
-};
-
-const MUSIC_TRACKS = [
-    {
-        name: "Jingle Bells",
-        loopEnd: "8m",
-        melody: [
-            ["0:0", "E4"], ["0:1", "E4"], ["0:2", "E4"],
-            ["1:0", "E4"], ["1:1", "E4"], ["1:2", "E4"],
-            ["2:0", "E4"], ["2:1", "G4"], ["2:2", "C4"], ["2:2.5", "D4"],
-            ["3:0", "E4"],
-            ["4:0", "F4"], ["4:1", "F4"], ["4:2", "F4"], ["4:3", "F4"],
-            ["5:0", "F4"], ["5:1", "E4"], ["5:2", "E4"], ["5:3", "E4"],
-            ["6:0", "E4"], ["6:1", "D4"], ["6:2", "D4"], ["6:3", "E4"],
-            ["7:0", "D4"], ["7:2", "G4"]
-        ]
-    }
-];
 
 const UI_CONFIG = {
     SAFE_AREA_MARGIN: 50,
@@ -421,7 +396,7 @@ class MenuScene extends Phaser.Scene {
         attribution.setInteractive({ useHandCursor: true });
         attribution.on('pointerover', () => attribution.setColor('#FF6B6B'));
         attribution.on('pointerout', () => attribution.setColor('#888'));
-        attribution.on('pointerdown', () => window.open('https://github.com/anirudha-simha', '_blank'));
+        attribution.on('pointerdown', () => window.open('https://anirudha-simha.github.io', '_blank'));
 
         // Also allow space/tap to start
         this.input.keyboard.once('keydown-SPACE', () => this.startGame());
@@ -433,12 +408,8 @@ class MenuScene extends Phaser.Scene {
     }
 
     async startGame() {
-        // Start audio on button click (user gesture required for mobile)
-        try {
-            await Tone.start();
-        } catch (e) {
-            console.log('Audio context failed to start:', e);
-        }
+        // Unlock audio on button click (user gesture required for mobile)
+        await audioManager.unlock();
         this.scene.start('GameScene');
     }
 }
@@ -482,12 +453,9 @@ class GameOverScene extends Phaser.Scene {
     }
 
     async restartGame() {
-        // Resume audio context on restart (user gesture)
-        try {
-            await Tone.start();
-        } catch (e) {
-            console.log('Audio context failed to start:', e);
-        }
+        // Reset audio manager and unlock context
+        audioManager.reset();
+        await audioManager.unlock();
         this.scene.start('GameScene');
     }
 }
@@ -500,9 +468,13 @@ class GameScene extends Phaser.Scene {
         super({ key: 'GameScene' });
     }
 
+    preload() {
+        // Delegate audio loading to AudioManager
+        audioManager.preload(this);
+    }
+
     create() {
         this.score = 0;
-        this.audioStarted = false;
         this.isGameOver = false;
         this.groundHeight = this.scale.height * GAME_CONFIG.GROUND_HEIGHT_RATIO;
 
@@ -513,8 +485,8 @@ class GameScene extends Phaser.Scene {
         this.createInput();
         this.createUI();
 
-        // Create synths and start music
-        this.initAudio();
+        // Initialize audio and start music
+        audioManager.init(this);
 
         // Schedule first obstacle
         this.scheduleNextObstacle();
@@ -617,52 +589,6 @@ class GameScene extends Phaser.Scene {
         this.scoreText.setDepth(10);
     }
 
-    async initAudio() {
-        if (this.audioStarted) return;
-
-        try {
-            await Tone.start();
-            this.audioStarted = true;
-
-            this.synth = new Tone.PolySynth(Tone.Synth, {
-                oscillator: { type: "sine" },
-                envelope: { attack: 0.005, decay: 0.2, sustain: 0.4, release: 1.5 }
-            }).toDestination();
-            this.synth.volume.value = AUDIO_CONFIG.SYNTH_VOLUME;
-
-            const reverb = new Tone.Reverb({
-                decay: AUDIO_CONFIG.REVERB_DECAY,
-                wet: AUDIO_CONFIG.REVERB_WET
-            }).toDestination();
-            this.synth.connect(reverb);
-
-            this.jumpSynth = new Tone.Synth({
-                oscillator: { type: "square" },
-                envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 }
-            }).toDestination();
-            this.jumpSynth.volume.value = AUDIO_CONFIG.JUMP_VOLUME;
-
-            this.hitSynth = new Tone.MembraneSynth().toDestination();
-            this.hitSynth.volume.value = AUDIO_CONFIG.HIT_VOLUME;
-
-            Tone.Transport.bpm.value = AUDIO_CONFIG.BPM;
-
-            // Start music
-            const track = MUSIC_TRACKS[Math.floor(Math.random() * MUSIC_TRACKS.length)];
-            this.musicPart = new Tone.Part((time, note) => {
-                this.synth.triggerAttackRelease(note, "8n", time);
-            }, track.melody);
-            this.musicPart.loop = true;
-            this.musicPart.loopEnd = track.loopEnd;
-            Tone.Transport.start();
-            this.musicPart.start(0);
-        } catch (e) {
-            console.log('Audio initialization failed:', e);
-        }
-    }
-
-
-
     spawnObstacle() {
         const obstacleHeight = GAME_CONFIG.OBSTACLE_MIN_HEIGHT +
             Math.random() * (GAME_CONFIG.OBSTACLE_MAX_HEIGHT - GAME_CONFIG.OBSTACLE_MIN_HEIGHT);
@@ -709,12 +635,9 @@ class GameScene extends Phaser.Scene {
         // Stop physics
         this.physics.pause();
 
-        // Stop music
-        if (this.audioStarted) {
-            this.hitSynth.triggerAttackRelease("C2", "8n");
-            Tone.Transport.stop();
-            if (this.musicPart) this.musicPart.stop();
-        }
+        // Play hit sound and stop music
+        audioManager.playHit();
+        audioManager.stopMusic();
 
         // Delayed transition for reliability
         const finalScore = this.score;
@@ -727,9 +650,8 @@ class GameScene extends Phaser.Scene {
         if (this.cat.body.touching.down) {
             this.cat.body.setVelocityY(PLAYER_CONFIG.JUMP_VELOCITY);
 
-            if (this.audioStarted) {
-                this.jumpSynth.triggerAttackRelease("C5", "16n");
-            }
+            // Play jump sound
+            audioManager.playJump();
 
             this.tweens.add({
                 targets: this.cat,
@@ -771,11 +693,8 @@ class GameScene extends Phaser.Scene {
     }
 
     shutdown() {
-        // Clean up when scene stops
-        if (this.audioStarted && this.musicPart) {
-            Tone.Transport.stop();
-            this.musicPart.stop();
-        }
+        // Clean up audio when scene stops
+        audioManager.cleanup();
     }
 }
 
