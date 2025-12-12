@@ -36,6 +36,7 @@ const MUSIC_TRACKS = [
 class AudioManager {
     constructor() {
         this.initialized = false;
+        this.unlocked = false;
         this.musicLoaded = false;
         this.usingPhaserMusic = false;
 
@@ -73,8 +74,11 @@ class AudioManager {
      * Call this on button click before starting the game
      */
     async unlock() {
+        if (this.unlocked) return true;
+
         try {
             await Tone.start();
+            this.unlocked = true;
             return true;
         } catch (e) {
             console.log('Audio context failed to unlock:', e);
@@ -90,17 +94,15 @@ class AudioManager {
         if (this.initialized) return;
         this.initialized = true;
 
-        // Initialize Tone.js sound effects
-        await this.initSoundEffects();
+        // Initialize Tone.js sound effects (context should already be unlocked)
+        this.initSoundEffects();
 
         // Start music (Phaser MP3 or Tone.js fallback)
         this.startMusic(scene);
     }
 
-    async initSoundEffects() {
+    initSoundEffects() {
         try {
-            await Tone.start();
-
             this.jumpSynth = new Tone.Synth({
                 oscillator: { type: "square" },
                 envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 }
